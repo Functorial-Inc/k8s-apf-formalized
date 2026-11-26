@@ -1,0 +1,277 @@
+Subject: queueset: add inert tracing for the formal model
+
+Adds a stable id to queue and request and, when a test installs traceSink, emits one JSONL
+record per model action (init, reconfigure, arrive, dispatch, finish, timer_fire, panic)
+under qs.lock, after the action's effects. The schema is docs/model-contract.md of the
+k8s-apf-formalized repository. With traceSink nil (the default) nothing is recorded or
+changed: the only runtime additions are id counters and nil checks. A panic in
+finishRequestLocked or in the lingering-seats timer callback is recovered only to write a
+`panic` record and is then re-panicked unchanged.
+Applies to dbe731cf4b0286d68d743068f251263c70719f3e, with or without 0001.
+
+diff --git a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go
+index 6d911ee..2b94c7e 100644
+--- a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go
++++ b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go
+@@ -114,6 +114,13 @@ type queueSet struct {
+ 	// queues are still draining.
+ 	queues []*queue
+ 
++	// Tracing state, see trace.go. Meaningful only while traceSink is set.
++	traceSeq       int
++	traceInited    bool
++	nextQueueID    int
++	nextRequestID  int
++	traceLingering map[*request]struct{}
++
+ 	// currentR is the amount of seat-seconds allocated per queue since process startup.
+ 	// This is our generalization of the progress meter named R in the original fair queuing work.
+ 	currentR fqrequest.SeatSeconds
+@@ -261,8 +268,12 @@ func (qs *queueSet) setConfiguration(ctx context.Context, qCfg fq.QueuingConfig,
+ 		// it goes empty and there are too many.
+ 		numQueues := len(qs.queues)
+ 		if qCfg.DesiredNumQueues > numQueues {
+-			qs.queues = append(qs.queues,
+-				createQueues(qCfg.DesiredNumQueues-numQueues, len(qs.queues))...)
++			newQueues := createQueues(qCfg.DesiredNumQueues-numQueues, len(qs.queues))
++			for _, q := range newQueues {
++				q.id = qs.nextQueueID
++				qs.nextQueueID++
++			}
++			qs.queues = append(qs.queues, newQueues...)
+ 		}
+ 	} else {
+ 		qCfg.QueueLengthLimit = qs.qCfg.QueueLengthLimit
+@@ -283,6 +294,12 @@ func (qs *queueSet) setConfiguration(ctx context.Context, qCfg fq.QueuingConfig,
+ 	qs.reqsGaugePair.RequestsExecuting.SetDenominator(float64(dCfg.ConcurrencyDenominator))
+ 	qs.execSeatsGauge.SetDenominator(float64(dCfg.ConcurrencyDenominator))
+ 
++	if !qs.traceInited {
++		qs.traceInited = true
++		qs.traceLocked("init", nil, nil)
++	} else {
++		qs.traceLocked("reconfigure", nil, nil)
++	}
+ 	qs.dispatchAsMuchAsPossibleLocked()
+ }
+ 
+@@ -558,6 +575,7 @@ func (qs *queueSet) shuffleShardAndRejectOrEnqueueLocked(ctx context.Context, wo
+ 
+ 	// Create a request and enqueue
+ 	req := &request{
++		id:                qs.nextRequestID,
+ 		qs:                qs,
+ 		fsName:            fsName,
+ 		flowDistinguisher: flowDistinguisher,
+@@ -574,7 +592,9 @@ func (qs *queueSet) shuffleShardAndRejectOrEnqueueLocked(ctx context.Context, wo
+ 	if ok := qs.rejectOrEnqueueToBoundLocked(req); !ok {
+ 		return nil
+ 	}
++	qs.nextRequestID++
+ 	metrics.ObserveQueueLength(ctx, qs.qCfg.Name, fsName, queue.requestsWaiting.Length())
++	qs.traceLocked("arrive", req, nil)
+ 	return req
+ }
+ 
+@@ -739,6 +759,7 @@ func (qs *queueSet) dispatchLocked() bool {
+ 			request.workEstimate, queue.index, queue.nextDispatchR)
+ 	}
+ 	queue.nextDispatchR += request.totalWork()
++	qs.traceLocked("dispatch", request, nil)
+ 	return true
+ }
+ 
+@@ -861,6 +882,7 @@ func (qs *queueSet) finishRequestAndDispatchAsMuchAsPossible(req *request) bool
+ // previously dispatched request has completed it's service.  This
+ // callback updates important state in the queueSet
+ func (qs *queueSet) finishRequestLocked(r *request) {
++	defer qs.traceRecoverLocked(r)
+ 	now := qs.clock.Now()
+ 	qs.totRequestsExecuting--
+ 	metrics.AddRequestsExecuting(r.ctx, qs.qCfg.Name, r.fsName, -1)
+@@ -888,6 +910,7 @@ func (qs *queueSet) finishRequestLocked(r *request) {
+ 		if r.workEstimate.AdditionalLatency <= 0 {
+ 			// release the seats allocated to this request immediately
+ 			releaseSeatsLocked()
++			qs.traceLocked("finish", r, nil)
+ 			if !klogV.Enabled() {
+ 			} else if r.queue != nil {
+ 				klogV.Infof("QS(%s) at t=%s R=%v: request %#+v %#+v finished all use of %d seats, adjusted queue %d start R to %v due to service time %.9fs, queue will have %d requests with %#v waiting & %d requests occupying %d seats",
+@@ -915,8 +938,11 @@ func (qs *queueSet) finishRequestLocked(r *request) {
+ 		qs.clock.EventAfterDuration(func(_ time.Time) {
+ 			qs.lockAndSyncTime(r.ctx)
+ 			defer qs.lock.Unlock()
++			defer qs.traceRecoverLocked(r)
+ 			now := qs.clock.Now()
+ 			releaseSeatsLocked()
++			qs.traceSetLingering(r, false)
++			qs.traceLocked("timer_fire", r, nil)
+ 			if !klogV.Enabled() {
+ 			} else if r.queue != nil {
+ 				klogV.Infof("QS(%s) at t=%s R=%v: request %#+v %#+v finished lingering on %d seats, queue %d will have %d requests with %#v waiting & %d requests occupying %d seats",
+@@ -927,6 +953,8 @@ func (qs *queueSet) finishRequestLocked(r *request) {
+ 			}
+ 			qs.dispatchAsMuchAsPossibleLocked()
+ 		}, additionalLatency)
++		qs.traceSetLingering(r, true)
++		qs.traceLocked("finish", r, nil)
+ 	}()
+ 
+ 	if r.queue != nil {
+diff --git a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/trace.go b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/trace.go
+new file mode 100644
+index 0000000..1437193
+--- /dev/null
++++ b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/trace.go
+@@ -0,0 +1,127 @@
++/*
++Copyright The Kubernetes Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package queueset
++
++import (
++	"encoding/json"
++	"fmt"
++	"sort"
++)
++
++// traceSink receives one JSON line per model action. It is nil, and so
++// every trace call below is a no-op, unless a test installs it.
++// Tracing is for the formal model of this package; see model-contract.md.
++var traceSink func(line []byte)
++
++type traceQueue struct {
++	ID         int   `json:"id"`
++	Index      int   `json:"index"`
++	SeatsInUse int   `json:"seatsInUse"`
++	Waiting    []int `json:"waiting"`
++	Executing  []int `json:"executing"`
++}
++
++type traceLinger struct {
++	Req   int `json:"req"`
++	Queue int `json:"queue"`
++	Width int `json:"width"`
++}
++
++type tracePost struct {
++	Desired       int           `json:"desired"`
++	TotSeatsInUse int           `json:"totSeatsInUse"`
++	Panicked      bool          `json:"panicked"`
++	Queues        []traceQueue  `json:"queues"`
++	Lingering     []traceLinger `json:"lingering"`
++}
++
++type traceRecord struct {
++	Seq     int       `json:"seq"`
++	Ev      string    `json:"ev"`
++	Req     *int      `json:"req,omitempty"`
++	Queue   *int      `json:"queue,omitempty"`
++	Width   *int      `json:"width,omitempty"`
++	Lingers *bool     `json:"lingers,omitempty"`
++	Desired int       `json:"desired"`
++	Msg     string    `json:"msg,omitempty"`
++	Post    tracePost `json:"post"`
++}
++
++// traceLocked writes one record. The caller holds qs.lock and has
++// completed the action's effects. r is nil for init and reconfigure.
++func (qs *queueSet) traceLocked(ev string, r *request, panicMsg any) {
++	if traceSink == nil {
++		return
++	}
++	rec := traceRecord{Seq: qs.traceSeq, Ev: ev, Desired: qs.qCfg.DesiredNumQueues}
++	qs.traceSeq++
++	if r != nil {
++		id, qid, w, l := r.id, r.queue.id, r.MaxSeats(), r.workEstimate.AdditionalLatency > 0
++		rec.Req, rec.Queue, rec.Width, rec.Lingers = &id, &qid, &w, &l
++	}
++	rec.Post = tracePost{Desired: qs.qCfg.DesiredNumQueues, TotSeatsInUse: qs.totSeatsInUse, Panicked: ev == "panic",
++		Queues: []traceQueue{}, Lingering: []traceLinger{}}
++	if panicMsg != nil {
++		rec.Msg = fmt.Sprint(panicMsg)
++	}
++	for _, q := range qs.queues {
++		tq := traceQueue{ID: q.id, Index: q.index, SeatsInUse: q.seatsInUse, Waiting: []int{}, Executing: []int{}}
++		q.requestsWaiting.Walk(func(w *request) bool { tq.Waiting = append(tq.Waiting, w.id); return true })
++		for e := range q.requestsExecuting {
++			tq.Executing = append(tq.Executing, e.id)
++		}
++		sort.Ints(tq.Executing)
++		rec.Post.Queues = append(rec.Post.Queues, tq)
++	}
++	for l := range qs.traceLingering {
++		rec.Post.Lingering = append(rec.Post.Lingering, traceLinger{l.id, l.queue.id, l.MaxSeats()})
++	}
++	sort.Slice(rec.Post.Lingering, func(i, j int) bool { return rec.Post.Lingering[i].Req < rec.Post.Lingering[j].Req })
++	line, err := json.Marshal(rec)
++	if err != nil {
++		panic(err)
++	}
++	traceSink(line)
++}
++
++// traceSetLingering records that r has finished but not yet released its seats.
++func (qs *queueSet) traceSetLingering(r *request, lingering bool) {
++	if traceSink == nil {
++		return
++	}
++	if qs.traceLingering == nil {
++		qs.traceLingering = map[*request]struct{}{}
++	}
++	if lingering {
++		qs.traceLingering[r] = struct{}{}
++	} else {
++		delete(qs.traceLingering, r)
++	}
++}
++
++// traceRecoverLocked is deferred, with qs.lock held, around code that may
++// panic in removeQueueAndUpdateIndexes. It records the panic and re-panics.
++func (qs *queueSet) traceRecoverLocked(r *request) {
++	if traceSink == nil {
++		return
++	}
++	if p := recover(); p != nil {
++		qs.traceSetLingering(r, false)
++		qs.traceLocked("panic", r, p)
++		panic(p)
++	}
++}
+diff --git a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/types.go b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/types.go
+index 8c36a58..0643804 100644
+--- a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/types.go
++++ b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/types.go
+@@ -31,6 +31,9 @@ import (
+ // request is a temporary container for "requests" with additional
+ // tracking fields required for QueueSet functionality.
+ type request struct {
++	// id is a stable identity for tracing; see trace.go.
++	id int
++
+ 	ctx context.Context
+ 
+ 	qs *queueSet
+@@ -91,6 +94,9 @@ type completedWorkEstimate struct {
+ // queue is a sequence of requests that have arrived but not yet finished
+ // execution in both the real and virtual worlds.
+ type queue struct {
++	// id is a stable identity for tracing; see trace.go.
++	id int
++
+ 	// The requestsWaiting not yet executing in the real world are stored in a FIFO list.
+ 	requestsWaiting fifo
+ 

@@ -1,0 +1,10 @@
+=== RUN   TestAPFScenario
+OBS after both Finish calls: 3 queues; queue ids in slice and their index: [q0(index=0,seats=0,waiting=0,exec=0) q1(index=1,seats=0,waiting=0,exec=0) q2(index=2,seats=1,waiting=0,exec=0)]
+OBS advancing the clock by 2s, past the lingering request's 1s
+OBS after the timer: 2 queues; [q0(index=0,seats=0,waiting=0,exec=0) q1(index=1,seats=0,waiting=0,exec=0)]; totSeatsInUse=0
+SUMMARY name=pr-panic events=9 arrived=2 finished=2 panic=false early_removals=0 wrong_removals=0 wrong_busy=0 hit=false
+--- PASS: TestAPFScenario (0.00s)
+=== RUN   TestAPFRandom
+    apf_trace_test.go:389: APF_SEED not set
+--- SKIP: TestAPFRandom (0.00s)
+PASS

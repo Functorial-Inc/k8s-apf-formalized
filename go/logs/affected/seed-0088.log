@@ -1,0 +1,7 @@
+=== RUN   TestAPFScenario
+    apf_trace_test.go:266: APF_SCENARIO not set
+--- SKIP: TestAPFScenario (0.00s)
+=== RUN   TestAPFRandom
+SUMMARY name=seed-0088 events=31 arrived=7 finished=7 panic=false early_removals=1 wrong_removals=0 wrong_busy=0 hit=true
+--- PASS: TestAPFRandom (0.00s)
+PASS

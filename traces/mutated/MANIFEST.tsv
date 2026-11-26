@@ -1,0 +1,31 @@
+file	kind	source	mutated_seq	why_it_must_be_rejected
+drop-timer-fire--pr-wrongqueue-executing.jsonl	drop-timer-fire	pr-wrongqueue-executing.jsonl	10	a lingering request is never released: later snapshots show its seats gone, or it stays lingering forever
+drop-timer-fire--pr-wrongqueue-waiting-crash.jsonl	drop-timer-fire	pr-wrongqueue-waiting-crash.jsonl	11	a lingering request is never released: later snapshots show its seats gone, or it stays lingering forever
+drop-timer-fire--pr-wrongqueue-waiting-lost.jsonl	drop-timer-fire	pr-wrongqueue-waiting-lost.jsonl	12	a lingering request is never released: later snapshots show its seats gone, or it stays lingering forever
+drop-timer-fire--seed-0100.jsonl	drop-timer-fire	seed-0100.jsonl	58	a lingering request is never released: later snapshots show its seats gone, or it stays lingering forever
+drop-timer-fire--seed-0055.jsonl	drop-timer-fire	seed-0055.jsonl	18	a lingering request is never released: later snapshots show its seats gone, or it stays lingering forever
+drop-timer-fire--seed-0004.jsonl	drop-timer-fire	seed-0004.jsonl	17	a lingering request is never released: later snapshots show its seats gone, or it stays lingering forever
+duplicate-timer-fire--pr-panic.jsonl	duplicate-timer-fire	pr-panic.jsonl	8	release_once: the second timer_fire has no lingering request to release
+duplicate-timer-fire--pr-wrongqueue-executing.jsonl	duplicate-timer-fire	pr-wrongqueue-executing.jsonl	10	release_once: the second timer_fire has no lingering request to release
+duplicate-timer-fire--pr-wrongqueue-waiting-crash.jsonl	duplicate-timer-fire	pr-wrongqueue-waiting-crash.jsonl	11	release_once: the second timer_fire has no lingering request to release
+duplicate-timer-fire--pr-wrongqueue-waiting-lost.jsonl	duplicate-timer-fire	pr-wrongqueue-waiting-lost.jsonl	12	release_once: the second timer_fire has no lingering request to release
+duplicate-timer-fire--seed-0100.jsonl	duplicate-timer-fire	seed-0100.jsonl	58	release_once: the second timer_fire has no lingering request to release
+duplicate-timer-fire--seed-0055.jsonl	duplicate-timer-fire	seed-0055.jsonl	18	release_once: the second timer_fire has no lingering request to release
+early-queue-removal--pr-panic.jsonl	early-queue-removal	pr-panic.jsonl	1	queue 2 leaves the slice while it still has requests: safe_retirement, and the model keeps it in the slice
+early-queue-removal--pr-wrongqueue-executing.jsonl	early-queue-removal	pr-wrongqueue-executing.jsonl	1	queue 0 leaves the slice while it still has requests: safe_retirement, and the model keeps it in the slice
+early-queue-removal--pr-wrongqueue-waiting-crash.jsonl	early-queue-removal	pr-wrongqueue-waiting-crash.jsonl	1	queue 0 leaves the slice while it still has requests: safe_retirement, and the model keeps it in the slice
+early-queue-removal--pr-wrongqueue-waiting-lost.jsonl	early-queue-removal	pr-wrongqueue-waiting-lost.jsonl	1	queue 0 leaves the slice while it still has requests: safe_retirement, and the model keeps it in the slice
+early-queue-removal--seed-0100.jsonl	early-queue-removal	seed-0100.jsonl	1	queue 2 leaves the slice while it still has requests: safe_retirement, and the model keeps it in the slice
+early-queue-removal--seed-0055.jsonl	early-queue-removal	seed-0055.jsonl	9	queue 0 leaves the slice while it still has requests: safe_retirement, and the model keeps it in the slice
+change-seatsInUse--pr-panic.jsonl	change-seatsInUse	pr-panic.jsonl	2	conservation: queue 2 claims 2 seats but its reservations sum to 1
+change-seatsInUse--pr-wrongqueue-executing.jsonl	change-seatsInUse	pr-wrongqueue-executing.jsonl	2	conservation: queue 0 claims 2 seats but its reservations sum to 1
+change-seatsInUse--pr-wrongqueue-waiting-crash.jsonl	change-seatsInUse	pr-wrongqueue-waiting-crash.jsonl	2	conservation: queue 0 claims 2 seats but its reservations sum to 1
+change-seatsInUse--pr-wrongqueue-waiting-lost.jsonl	change-seatsInUse	pr-wrongqueue-waiting-lost.jsonl	2	conservation: queue 0 claims 2 seats but its reservations sum to 1
+change-seatsInUse--seed-0100.jsonl	change-seatsInUse	seed-0100.jsonl	2	conservation: queue 2 claims 2 seats but its reservations sum to 1
+change-seatsInUse--seed-0055.jsonl	change-seatsInUse	seed-0055.jsonl	2	conservation: queue 0 claims 2 seats but its reservations sum to 1
+swap-index--pr-panic.jsonl	swap-index	pr-panic.jsonl	1	index of queues 0 and 1 swapped: the indexes are still a permutation, so only the comparison with the model's predicted idx catches it
+swap-index--pr-wrongqueue-executing.jsonl	swap-index	pr-wrongqueue-executing.jsonl	1	index of queues 0 and 1 swapped: the indexes are still a permutation, so only the comparison with the model's predicted idx catches it
+swap-index--pr-wrongqueue-waiting-crash.jsonl	swap-index	pr-wrongqueue-waiting-crash.jsonl	1	index of queues 0 and 1 swapped: the indexes are still a permutation, so only the comparison with the model's predicted idx catches it
+swap-index--pr-wrongqueue-waiting-lost.jsonl	swap-index	pr-wrongqueue-waiting-lost.jsonl	1	index of queues 0 and 1 swapped: the indexes are still a permutation, so only the comparison with the model's predicted idx catches it
+swap-index--seed-0100.jsonl	swap-index	seed-0100.jsonl	1	index of queues 0 and 1 swapped: the indexes are still a permutation, so only the comparison with the model's predicted idx catches it
+swap-index--seed-0055.jsonl	swap-index	seed-0055.jsonl	9	index of queues 0 and 1 swapped: the indexes are still a permutation, so only the comparison with the model's predicted idx catches it

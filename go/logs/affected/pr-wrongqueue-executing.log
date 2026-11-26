@@ -1,0 +1,14 @@
+=== RUN   TestAPFScenario
+OBS before reconfigure: [q0(index=0,seats=2,waiting=0,exec=2) q1(index=1,seats=1,waiting=0,exec=1) q2(index=2,seats=0,waiting=0,exec=0)]
+OBS after r.Finish, s.Finish: [q1(index=0,seats=1,waiting=0,exec=1) q2(index=1,seats=0,waiting=0,exec=0)]
+    apf_trace_test.go:333: got 2 queues while the lingering request still holds seats, want 3
+OBS advancing the clock by 2s; r's stale index is 0
+OBS after r's timer: [q2(index=0,seats=0,waiting=0,exec=0)]; t executing=true
+    apf_trace_test.go:339: got 1 queues after r released its seats, want 2
+OBS after t.Finish: [q2(index=0,seats=0,waiting=0,exec=0)]; totSeatsInUse=0 totRequestsWaiting=0
+SUMMARY name=pr-wrongqueue-executing events=12 arrived=3 finished=3 panic=false early_removals=2 wrong_removals=1 wrong_busy=1 hit=true
+--- FAIL: TestAPFScenario (0.00s)
+=== RUN   TestAPFRandom
+    apf_trace_test.go:389: APF_SEED not set
+--- SKIP: TestAPFRandom (0.00s)
+FAIL

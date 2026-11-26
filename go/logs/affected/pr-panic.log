@@ -1,0 +1,24 @@
+=== RUN   TestAPFScenario
+OBS after both Finish calls: 2 queues; queue ids in slice and their index: [q0(index=0,seats=0,waiting=0,exec=0) q1(index=1,seats=0,waiting=0,exec=0)]
+    apf_trace_test.go:288: got 2 queues while the lingering request still holds seats, want 3
+OBS advancing the clock by 2s, past the lingering request's 1s
+SUMMARY name=pr-panic events=9 arrived=2 finished=2 panic=true early_removals=1 wrong_removals=0 wrong_busy=0 hit=true
+panic: runtime error: slice bounds out of range [3:2] [recovered, repanicked]
+
+goroutine 83 [running]:
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).traceRecoverLocked(0x63c5da7a8000, 0x63c5da7d45a0)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/trace.go:125 +0xb8
+panic({0x10156b0c8?, 0x63c5da73c390?})
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/runtime/panic.go:859 +0x120
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.removeQueueAndUpdateIndexes(...)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:1017
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).removeQueueIfEmptyLocked(0x63c5da7a8000, 0x63c5da7d45a0)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:1004 +0x1bc
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).finishRequestLocked.func1()
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:906 +0x104
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).finishRequestLocked.func2.1({0x63c5dac24bc8?, 0x100a269dc?, 0x0?})
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:943 +0xbc
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock.(*Fake).SetTime.func1.1(0x63c5dac24b60?, {0x63c5dac24700?, 0x0?, 0x10164fba0?})
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock/fake.go:211 +0x3c
+created by k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock.(*Fake).SetTime.func1 in goroutine 50
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock/fake.go:210 +0x8c

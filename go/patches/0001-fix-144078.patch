@@ -1,0 +1,22 @@
+From: kubernetes/kubernetes pull request #144078 (open, unmerged), head e2f47fe77d830dbe10c1f169b6c5264a60e6732b
+Subject: apiserver/flowcontrol: do not remove an excess queue while seats are in use
+
+Provenance: the queueset.go hunk of the diff of https://github.com/kubernetes/kubernetes/pull/144078,
+copied verbatim. The PR's regression test (queueset_test.go) is omitted here; our harness has its own
+version of that scenario. Fixes https://github.com/kubernetes/kubernetes/issues/144077.
+Applies to dbe731cf4b0286d68d743068f251263c70719f3e. Authorship of the change belongs to the PR author.
+
+diff --git a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go
+index 6d911ee2eb058..ed4d25c158d1e 100644
+--- a/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go
++++ b/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go
+@@ -972,7 +972,8 @@ func (qs *queueSet) removeQueueIfEmptyLocked(r *request) {
+ 	// requests then remove it
+ 	if len(qs.queues) > qs.qCfg.DesiredNumQueues &&
+ 		r.queue.requestsWaiting.Length() == 0 &&
+-		r.queue.requestsExecuting.Len() == 0 {
++		r.queue.requestsExecuting.Len() == 0 &&
++		r.queue.seatsInUse == 0 {
+ 		qs.queues = removeQueueAndUpdateIndexes(qs.queues, r.queue.index)
+ 
+ 		// decrement here to maintain the invariant that (qs.robinIndex+1) % numQueues

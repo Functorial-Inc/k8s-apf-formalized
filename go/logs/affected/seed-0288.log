@@ -1,0 +1,25 @@
+=== RUN   TestAPFScenario
+    apf_trace_test.go:266: APF_SCENARIO not set
+--- SKIP: TestAPFScenario (0.00s)
+=== RUN   TestAPFRandom
+SUMMARY name=seed-0288 events=57 arrived=15 finished=14 panic=true early_removals=2 wrong_removals=1 wrong_busy=1 hit=true
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x2 addr=0x8 pc=0x105643e70]
+
+goroutine 85 [running]:
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).traceRecoverLocked(0x71a64d18a9a0, 0x71a64ce66870)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/trace.go:125 +0xb8
+panic({0x106066930?, 0x1061b2490?})
+	/opt/homebrew/Cellar/go/1.27.3/libexec/src/runtime/panic.go:859 +0x120
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).findDispatchQueueToBoundLocked(0x71a64d18a9a0)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:826 +0x310
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).dispatchLocked(0x71a64d18a9a0)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:716 +0x30
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).dispatchAsMuchAsPossibleLocked(...)
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:675
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset.(*queueSet).finishRequestLocked.func2.1({0x71a64d1da068?, 0x1055b69dc?, 0x71a64d180010?})
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset/queueset.go:954 +0x6a4
+k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock.(*Fake).SetTime.func1.1(0x71a64d1da000?, {0x71a64d187a40?, 0x0?, 0x1061dfba0?})
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock/fake.go:211 +0x3c
+created by k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock.(*Fake).SetTime.func1 in goroutine 24
+	/Users/tobi/src/functorial-inc/k8s-apf-formalized/go/upstream/staging/src/k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/testing/eventclock/fake.go:210 +0x8c

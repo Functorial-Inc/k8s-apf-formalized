@@ -1,0 +1,4 @@
+=== RUN   TestRemoveQueueOnlyWhenNoSeatsInUse
+--- PASS: TestRemoveQueueOnlyWhenNoSeatsInUse (0.00s)
+PASS
+ok  	k8s.io/apiserver/pkg/util/flowcontrol/fairqueuing/queueset	0.215s
