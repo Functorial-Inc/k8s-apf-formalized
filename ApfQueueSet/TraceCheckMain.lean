@@ -5,7 +5,7 @@ open ApfQueueSet.TraceCheck
 /-- `tracecheck FILE...`: replay each JSONL trace against the corrected model.
 Prints one line per file, `OK <file> (<n> records)` or
 `FAIL <file>: line <n> (seq <s>, ev <e>): <reason> [violates: <properties>]`.
-Exit 0 if every file conforms, 1 otherwise, 2 on usage or I/O errors. -/
+Exits 0 if every file conforms, 1 otherwise, 2 on usage or I/O errors. -/
 def main (args : List String) : IO UInt32 := do
   if args.isEmpty then
     IO.eprintln "usage: tracecheck FILE.jsonl..."

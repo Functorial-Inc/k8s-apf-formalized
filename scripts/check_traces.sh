@@ -7,7 +7,7 @@
 #   traces/affected/*             per file: must be rejected exactly when the
 #                                 seed is in go/RESULTS.md's bug-hitting list
 #                                 (the four pr-* scenarios all hit the bug)
-# Any other directory under traces/ is reported without an expectation.
+# The script reports any other directory under traces/ without an expectation.
 set -u
 cd "$(dirname "$0")/.."
 TC=.lake/build/bin/tracecheck

@@ -25,8 +25,8 @@ import ApfQueueSet.Synth
 #print axioms ApfQueueSet.onto_remove
 #print axioms ApfQueueSet.onto_grow
 
--- Hand-written Veil VC proofs (`prove_veil_invariant_goal`), registered with
--- `@[veil]` and used by `#check_invariants` for these three VCs
+-- Hand-written Veil VC proofs. `prove_veil_invariant_goal` registers each one
+-- with `@[veil]`, and `#check_invariants` uses them for these three VCs.
 #print axioms ApfCorrected.timerFire_index_integrity_onto
 #print axioms ApfCorrected.finish_index_integrity_onto
 #print axioms ApfCorrected.reconfigure_index_integrity_onto

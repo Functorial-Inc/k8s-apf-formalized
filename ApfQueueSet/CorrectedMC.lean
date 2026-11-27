@@ -16,11 +16,11 @@ GENERATED from `Affected.lean` by `scripts/gen_corrected.py`. Do not edit.
 
 veil module ApfCorrectedMC
 
--- SMT results are not trusted: lean-smt reconstructs a Lean proof for every
--- VC that cvc5 discharges (used by `#check_invariants` in Corrected.lean).
+-- We do not trust SMT results: lean-smt reconstructs a Lean proof for every
+-- VC that cvc5 discharges. `#check_invariants` in Corrected.lean relies on this.
 set_option veil.smt.trust false
 
--- Stable queue identity (the Go `*queue` pointer). Never an index.
+-- Stable queue identity (the Go `*queue` pointer), never an index.
 type queue
 -- Stable request identity (the Go `*request` pointer).
 type req
@@ -62,7 +62,7 @@ function releases : req → Nat
 -- can be stated as a sum. For `req := Fin n` Veil resolves it to
 -- `List.finRange n` (each request exactly once).
 instantiate reqEnum : Veil.Enumeration req
--- No verification conditions are generated in the model-checking variants.
+-- Veil generates no verification conditions in the model-checking variants.
 set_option veil.deferVCGeneration true
 
 #gen_state
@@ -84,7 +84,7 @@ after_init {
   created := val n
   inSlice Q := decide (qnum Q < val n)
   idx Q := qnum Q
-  -- `rq` of a fresh request is never read; pin it to queue id 0.
+  -- Nothing depends on `rq` of a fresh request, so pin it to queue id 0.
   let q0 :| qnum q0 = 0
   rq R := q0
   phase R := fresh
@@ -192,10 +192,10 @@ safety [index_integrity_inj] inSlice Q1 ∧ inSlice Q2 ∧ idx Q1 = idx Q2 → Q
 safety [index_integrity_bound] inSlice Q → idx Q < len
 safety [index_integrity_onto] ∀ i, i < len → ∃ q, inSlice q ∧ idx q = i
 
--- `conservation` (a sum over requests) is not first-order and is not stated
--- here. It is proved in `ApfQueueSet/Mirror.lean`. (A bare nonnegativity
--- clause `0 ≤ seatsInUse Q` cannot be translated to SMT-LIB by Veil 4.35's
--- pipeline for this model, so nonnegativity is also left to the mirror.)
+-- `conservation` (a sum over requests) is not first-order, so this file does
+-- not state it. `ApfQueueSet/Mirror.lean` proves it. (Veil 4.35's pipeline
+-- cannot translate a bare nonnegativity clause `0 ≤ seatsInUse Q` to SMT-LIB
+-- for this model, so we leave nonnegativity to the mirror as well.)
 
 -- ## Auxiliary invariants (true in both models; the corrected model needs
 -- them to make the safety clauses inductive)
@@ -208,7 +208,7 @@ invariant [releases_count]
 
 -- ## Model checking only: checked in every reachable state
 -- `conservation_fo` is the formula that the unbounded proof (Corrected.lean)
--- assumes in `release`; here it is checked, not assumed.
+-- assumes in `release`; here the model checker checks it instead.
 safety [conservation_fo]
   (phase R1 = executing ∨ phase R1 = lingering) ∧
   (phase R2 = executing ∨ phase R2 = lingering) ∧

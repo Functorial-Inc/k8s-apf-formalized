@@ -7,9 +7,10 @@ Every mutation breaks a trace in a way a correct checker must reject. Usage:
 
     uv run go/mutate.py [--src traces/corrected] [--out traces/mutated] [--per-kind 6]
 
-Output files are named <kind>--<source>.jsonl. MANIFEST.tsv lists, for each,
-the mutated line (seq) and what the checker should object to. Selection is
-deterministic: the scenario traces first, then seeds in a fixed shuffle.
+The script names each output file <kind>--<source>.jsonl. MANIFEST.tsv lists,
+for each, the mutated line (seq) and what the checker should object to. The
+script picks sources deterministically: the scenario traces first, then seeds
+in a fixed shuffle.
 """
 import argparse
 import copy
@@ -29,12 +30,13 @@ def dump(path, events):
 
 
 def busy(q, post):
-    """A queue with waiting, executing or lingering requests, or seats in use."""
+    """True if the queue has waiting, executing or lingering requests, or seats in use."""
     return bool(q["waiting"] or q["executing"] or q["seatsInUse"] or any(l["queue"] == q["id"] for l in post["lingering"]))
 
 
 def drop_timer_fire(ev):
-    # needs a later event, so that the later snapshots disagree with the model
+    # The dropped timer_fire needs a later event, so that the later snapshots
+    # disagree with the model.
     for i, e in enumerate(ev[:-1]):
         if e["ev"] == "timer_fire":
             out = ev[:i] + ev[i + 1:]

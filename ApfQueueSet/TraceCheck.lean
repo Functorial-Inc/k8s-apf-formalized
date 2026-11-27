@@ -5,15 +5,15 @@ import ApfQueueSet.Mirror
 
 **It replays traces with `ApfQueueSet.Mirror.apply rs true`**: the corrected
 model of the plain-Lean mirror (`Mirror.lean`), where `rs` is every request id
-that occurs in the trace. Not Veil's generated executable.
+that occurs in the trace. It does not use Veil's generated executable.
 
-Replays a JSONL trace (schema: `docs/model-contract.md`, extended as listed in
-`go/NOTES.md`) against the CORRECTED model.
+The traces are JSONL, with the schema of `docs/model-contract.md` and the
+extensions that `go/NOTES.md` lists.
 
 The step function is `ApfQueueSet.Mirror.apply rs true`, i.e. the very
-definition that `Mirror.corrected_safe` is proved about. It mirrors the Veil
-model `ApfCorrected` by inspection (see the header of `Mirror.lean`); Veil's
-own executable semantics are not driven from here.
+definition that `Mirror.corrected_safe` is a theorem about. It mirrors the Veil
+model `ApfCorrected` by inspection (see the header of `Mirror.lean`); this
+checker does not run Veil's own executable semantics.
 
 For every record after `init`:
 
@@ -21,9 +21,10 @@ For every record after `init`:
 2. The model's post-state must agree with the record's `post`: slice
    membership and order, stored indexes, per-queue `seatsInUse`,
    `totSeatsInUse`, `desired`, `panicked`, the waiting and executing sets of
-   each queue (compared as sets: the model does not order them), and the
+   each queue (the checker compares them as sets, because the model does not
+   order them), and the
    lingering set with each entry's queue and width.
-3. The four properties are evaluated on the record's `post` together with
+3. The checker evaluates the four properties on the record's `post` together with
    what the trace itself said about each request (`arrive` gives its queue
    and width; `finish`/`timer_fire`/`panic` end it). This view does not use the
    model, so it names the property the Go code broke even when the model
@@ -177,7 +178,7 @@ def compare (rs : List Nat) (s : S) (p : Snap) : Option String := Id.run do
 
 /-- What the trace itself says about requests: queue and width from
 `arrive`, live until a releasing `finish`, a `timer_fire` or a `panic`
-naming it; how many times each was released. -/
+naming it; and how many times the trace released each one. -/
 structure View where
   info : List (Nat × Nat × Nat) := []   -- (req, queue, width)
   live : List Nat := []
@@ -191,7 +192,7 @@ def View.release (v : View) (r : Nat) : View :=
   { v with live := v.live.erase r,
            released := (r, v.relCount r + 1) :: v.released.filter (·.1 != r) }
 
-/-- Violated properties of the snapshot, with reasons. -/
+/-- The properties that the snapshot violates, with reasons. -/
 def snapProps (v : View) (p : Snap) : List (String × String) := Id.run do
   let mut out : List (String × String) := []
   let ids := p.queues.map (·.id)
@@ -267,7 +268,7 @@ def viewStep (v : View) (r : Rec) : View :=
   | "timer_fire", some x => v.release x
   | "panic", some x =>
     -- a panic that replaced a timer_fire (`go/NOTES.md` item 3): the
-    -- request is no longer lingering in `post`, its release already ran
+    -- request is no longer lingering in `post`, and its release already ran
     if (r.post.lingering.any (·.req == x)) then v
     else if v.live.contains x then v.release x else v
   | _, _ => v

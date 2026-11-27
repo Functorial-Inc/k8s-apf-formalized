@@ -6,19 +6,19 @@ Lean definitions, with one Boolean `corrected` selecting the guard
 `docs/model-contract.md` for the corrected model by induction over executions,
 in Lean's kernel, with no SMT and no Mathlib.
 
-**Correspondence with the Veil models is by inspection, not by proof.** The
+**We checked the correspondence with the Veil models by inspection, not by proof.** The
 differences in representation are:
 
 * The slice `qs.queues` is a `List Q` (`slice`). Veil's `inSlice q` is
   `q ∈ slice` and Veil's `len` is `slice.length`. The stored `queue.index` is
-  `idx`, kept for queues that left the slice, as in Veil.
+  `idx`, which keeps its value for queues that left the slice, as in Veil.
 * `reconfigure` takes the new queue identities as an explicit list `fresh` of
   never-used queues (any order). Veil allocates them by the numbering `qnum`;
   that is one instance of this.
 * `removeAt i` removes `slice[i]`. Veil picks the in-slice `v` with
   `idx v = i`. The two agree whenever `index_integrity` holds, and the
   structural part of `index_integrity` (not `¬ panicked`) holds in every
-  reachable state of BOTH models (it is not affected by the bug).
+  reachable state of BOTH models (the bug does not affect it).
 * The universe of requests is a list `rs`. The theorems assume it lists every
   request exactly once (a finite request type). Quantifiers over requests in
   guards are `rs.all` / `rs.any`.
@@ -239,7 +239,7 @@ theorem mem_eraseIdx_nodup {l : List α} (hnd : l.Nodup) {k : Nat} (hk : k < l.l
     obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hx
     exact ⟨i, hi, fun h => hne (by subst h; rfl), rfl⟩
 
-/-- A sum changes only by the changed term when one point is updated. -/
+/-- Updating a function at one point changes the sum only by the change in that term. -/
 theorem sum_map_update {β : Type} (rs : List β) [DecidableEq β] (hnd : rs.Nodup) (f g : β → Int)
     (r0 : β) (hfg : ∀ r, r ≠ r0 → g r = f r) :
     (rs.map g).sum = (rs.map f).sum + (if r0 ∈ rs then g r0 - f r0 else 0) := by
@@ -354,8 +354,8 @@ theorem held_update {s s' : St Q R} (r : R)
     exact this
 
 include hall hnd in
-/-- One-request updates: conservation is kept when the seat counters move by
-exactly the change of `r`'s contribution. -/
+/-- One-request updates: an update keeps conservation when the seat counters
+move by exactly the change of `r`'s contribution. -/
 theorem consEq_of_update {s s' : St Q R} (r : R) (h : ConsEq rs s)
     (hag : ∀ x, x ≠ r → s'.phase x = s.phase x ∧ s'.rq x = s.rq x ∧ s'.width x = s.width x)
     (hseats : ∀ q, s'.seats q = s.seats q + (termQ s' q r - termQ s q r))
@@ -887,8 +887,8 @@ theorem issueInit_init : Init issueInit where
 
 /-- Issue #144077: two requests share the last queue (id 2), request 0
 lingers, the desired count drops to 1, request 0 finishes (lingering),
-request 1 finishes (queue 2 is removed while request 0 still holds its seat),
-the timer fires and removes index 2 of a 2-element slice. -/
+request 1 finishes (`removeQueueIfEmpty` removes queue 2 while request 0 still
+holds its seat), the timer fires and removes index 2 of a 2-element slice. -/
 def issueActions : List (Action Nat Nat) :=
   [arrive 0 2 1 true, dispatch 0, arrive 1 2 1 false, dispatch 1,
    reconfigure 1 [], finish 0, finish 1, timerFire 0]
@@ -908,15 +908,17 @@ theorem run_reachable {rs : List Nat} {c : Bool} :
     | some t => rw [ha] at hr; exact run_reachable as (.step a h ha) hr
 
 /-- In the AFFECTED model the issue's execution is enabled step by step and
-ends with `panicked`, after `safe_retirement` was already violated. -/
+ends with `panicked`, after the execution has already violated
+`safe_retirement`. -/
 theorem issue_144077_affected :
     (run [0, 1] false issueActions issueInit).map (fun s => (s.panicked, s.discarded))
       = some (true, true) := by
   decide
 
 /-- The same eight actions in the CORRECTED model: every step is enabled,
-nothing panics, nothing non-empty is discarded, and the queue is removed once,
-when the timer fires (two queues are left, as in PR #144078's test). -/
+nothing panics, no step discards a non-empty queue, and `removeQueueIfEmpty`
+removes the queue once, when the timer fires (two queues remain, as in PR
+#144078's test). -/
 theorem issue_144077_corrected :
     (run [0, 1] true issueActions issueInit).map
       (fun s => (s.panicked, s.discarded, s.slice)) = some (false, false, [0, 1]) := by
@@ -937,9 +939,9 @@ end Issue
 
 /-! ## The naive and the strict reading of "empty" (both models)
 
-The interface says a queue is not discarded "unless and until it is
-undesired and empty". `discardedNaive` records a discard that breaks the
-naive reading (the removed queue had a waiting or executing request).
+The doc comment on `QueueSet.BeginConfigChange` says that reconfiguration
+"does not discard any queue unless and until it is undesired and empty".
+`discardedNaive` records a discard that breaks the naive reading (the removed queue had a waiting or executing request).
 `discarded` records one that breaks the strict reading (waiting, executing or
 lingering). -/
 
@@ -948,7 +950,7 @@ variable {Q R : Type} [DecidableEq Q] [DecidableEq R]
 variable (rs : List R) (hall : ∀ r, r ∈ rs)
 
 /-- An invariant of BOTH models (any guard): the slice is consistent, and
-until a queue holding a live request has been discarded (strict reading),
+until some step discards a queue holding a live request (strict reading),
 nothing else has gone wrong either: no naive discard, no panic, and every
 live request's queue is in the slice. -/
 structure InvS (s : St Q R) : Prop where
@@ -1120,10 +1122,10 @@ theorem naive_imp_discarded (c : Bool) {s : St Q R} (h : Reachable rs c s) :
   (invS_reachable rs hall c h).naiveImp
 
 include hall in
-/-- **The naive flag is never the first to be set.** In BOTH models (in
-particular the affected one, `c = false`), as long as no queue holding a
-waiting, executing or lingering request has been discarded, no queue holding a
-waiting or executing request has been discarded either, nothing has panicked,
+/-- **No step sets the naive flag before the strict one.** In BOTH models (in
+particular the affected one, `c = false`), as long as no step has discarded a
+queue holding a waiting, executing or lingering request, no step has discarded
+a queue holding a waiting or executing request either, nothing has panicked,
 every live request's queue is in the slice (`SafeRetirement`), and the stored
 indexes match slice positions. -/
 theorem clean_until_strict_discard (c : Bool) {s : St Q R} (h : Reachable rs c s)
@@ -1148,7 +1150,7 @@ end Naive
 section NaiveIssue
 open Action
 
-/-- The issue's sequence, stopped right after the premature removal (the
+/-- The issue's sequence up to and including the premature removal (the
 second `finish`): the strict reading is already broken, the naive one is not,
 and nothing has panicked yet. -/
 theorem issue_144077_first_bad_step_is_naive_ok :
@@ -1166,7 +1168,7 @@ def wrongQueueActions : List (Action Nat Nat) :=
    arrive 2 1 1 false, dispatch 2, arrive 3 1 1 false,
    reconfigure 1 [], finish 0, finish 1, timerFire 0]
 
-/-- After the premature removal (10 actions), naive reading intact. -/
+/-- After the premature removal (10 actions), the naive reading is intact. -/
 theorem wrong_queue_premature_removal :
     (run [0, 1, 2, 3] false (wrongQueueActions.take 10) issueInit).map
       (fun s => (s.discarded, s.discardedNaive, s.panicked, s.slice))

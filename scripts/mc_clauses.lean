@@ -1,6 +1,6 @@
 -- ## Model checking only: checked in every reachable state
 -- `conservation_fo` is the formula that the unbounded proof (Corrected.lean)
--- assumes in `release`; here it is checked, not assumed.
+-- assumes in `release`; here the model checker checks it instead.
 safety [conservation_fo]
   (phase R1 = executing ∨ phase R1 = lingering) ∧
   (phase R2 = executing ∨ phase R2 = lingering) ∧

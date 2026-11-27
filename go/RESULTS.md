@@ -1,23 +1,23 @@
 # Results: running issue #144077 on real Kubernetes code
 
-Pinned commit `dbe731cf4b0286d68d743068f251263c70719f3e` (master, 2026-11-09 per `git log`). Go 1.27.3 darwin/arm64 is installed. Upstream's `go.mod` says `go 1.27.0` and `godebug default=go1.27`, and its `.go-version` says `1.27.3`. Fix: [PR #144078](https://github.com/kubernetes/kubernetes/pull/144078), head `e2f47fe77d83`, one added conjunct `&& r.queue.seatsInUse == 0`.
+We pinned commit `dbe731cf4b0286d68d743068f251263c70719f3e` (master, 2026-11-09 per `git log`). The installed Go is 1.27.3 darwin/arm64. Upstream's `go.mod` says `go 1.27.0` and `godebug default=go1.27`, and its `.go-version` says `1.27.3`. The fix is [PR #144078](https://github.com/kubernetes/kubernetes/pull/144078) at head `e2f47fe77d83`, which adds one conjunct, `&& r.queue.seatsInUse == 0`.
 
 ## Verdict
 
 | Claim in the issue | Reproduced? | Evidence |
 | -- | -- | -- |
-| Early removal: an excess queue is removed while a lingering request still holds seats in it | **Yes** | The PR author's own test, unmodified, fails on the unpatched tree: `got 2 queues while the lingering request still holds seats, want 3`. 76 of 300 random seeds hit it. |
+| Early removal: `removeQueueIfEmptyLocked` removes an excess queue while a lingering request still holds seats in it | **Yes** | The PR author's own test, unmodified, fails on the unpatched tree: `got 2 queues while the lingering request still holds seats, want 3`. 76 of 300 random seeds hit it. |
 | Panic: stale index at or past the end gives `slice bounds out of range` | **Yes** | `pr-panic` scenario: `panic: runtime error: slice bounds out of range [3:2]`, process exit 2. 5 of 300 random seeds end this way. |
-| Panic crashes the process, because the timer goroutine has no `recover` | **Yes, in the fake-clock harness** | The panic is raised in a goroutine that `eventclock.Fake` starts, which kills the test binary. I did not run a real apiserver. |
-| Different live queue removed when the stale index is in range | **Yes** | Three scenarios below. 28 of 300 seeds remove a queue that was not the finishing request's own; 13 of those removed a queue that still had waiting or executing requests. |
-| "silently corrupting the round-robin index bookkeeping and seat accounting" | **Partly. It is not silent when a waiting request is lost.** | If the wrongly removed queue held only an *executing* request, nothing crashed (`pr-wrongqueue-executing`, exit 1 from failed assertions only). If it held a *waiting* request, the next dispatch dereferences a nil queue and the process dies with `invalid memory address or nil pointer dereference`. All 13 random seeds with a wrongly removed busy queue ended in a panic. |
-| Corrected code (PR) fixes it | **Yes** | 304 of 304 corrected runs exit 0 and no seed hits the bug. The PR's test passes. |
+| Panic crashes the process, because the timer goroutine has no `recover` | **Yes, in the fake-clock harness** | The panic happens in a goroutine that `eventclock.Fake` starts, and it kills the test binary. I did not run a real apiserver. |
+| Wrong queue: when the stale index is in range, `removeQueueIfEmptyLocked` removes a different live queue | **Yes** | Three scenarios below. 28 of 300 seeds remove a queue that was not the finishing request's own; 13 of those removed a queue that still had waiting or executing requests. |
+| "silently corrupting the round-robin index bookkeeping and seat accounting" | **Partly. It is not silent when a waiting request is lost.** | If the queue that `removeQueueIfEmptyLocked` removed by mistake held only an *executing* request, nothing crashed (`pr-wrongqueue-executing`, exit 1 from failed assertions only). If it held a *waiting* request, the next dispatch dereferences a nil queue and the process dies with `invalid memory address or nil pointer dereference`. All 13 random seeds in which it removed a busy queue by mistake ended in a panic. |
+| The PR's corrected code fixes it | **Yes** | 304 of 304 corrected runs exit 0 and no seed hits the bug. The PR's test passes. |
 
-The nil dereference is not in the issue. It is a second crash with the same root cause, and it is the common one: 13 of the 18 seeds that panic. The contract's `panicked` flag only covers slice bounds; see `NOTES.md` item 1.
+The nil dereference is not in the issue. It is a second crash with the same root cause, and it is the more common one, ending 13 of the 18 seeds that panic. The contract's `panicked` flag only covers slice bounds (see `NOTES.md` item 1).
 
 ## Commands
 
-All from `go/`. Exit codes are those of the test binary for one scenario or seed.
+Run all of these from `go/`. The exit codes below are those of the test binary for one scenario or seed.
 
 ```
 ./fetch.sh                      # blobless, sparse (staging/src/k8s.io) checkout at the pinned SHA into go/upstream
@@ -28,9 +28,9 @@ All from `go/`. Exit codes are those of the test binary for one scenario or seed
 uv run mutate.py                # -> traces/mutated/ (30 files and MANIFEST.tsv)
 ```
 
-`fetch.sh` takes about 14 s. Tests build with `cd go/upstream/staging/src/k8s.io/apiserver && go test ...`; the staging modules resolve each other through their `replace` directives, so no `vendor/` and no top-level `go.mod` is needed. `run.sh` restores the tree on exit (`git reset; git checkout .; git clean -fd`). Running `affected` and `corrected` twice produced byte-identical trace files (compared by `shasum`).
+`fetch.sh` takes about 14 s. The tests build with `cd go/upstream/staging/src/k8s.io/apiserver && go test ...`. The staging modules resolve each other through their `replace` directives, so the build needs no `vendor/` and no top-level `go.mod`. `run.sh` restores the tree on exit (`git reset; git checkout .; git clean -fd`). Running `affected` and `corrected` twice produced byte-identical trace files, and `shasum` confirmed it.
 
-Each scenario and each seed runs in its own process: on affected code the timer goroutine panics and takes the process down, so one process per seed is the only way to keep going. Logs are in `go/logs/<mode>/`: one `.log` per run, `exit-codes.tsv`, `summary.txt`.
+Each scenario and each seed runs in its own process, because on affected code the timer goroutine panics and kills the process, and one process per seed is the only way to keep going after that. The logs are in `go/logs/<mode>/`, which holds one `.log` per run, `exit-codes.tsv` and `summary.txt`.
 
 ## 1. The PR's own test, unmodified (`./run.sh pr-test`)
 
@@ -45,18 +45,18 @@ Each scenario and each seed runs in its own process: on affected code the timer 
 --- PASS: TestRemoveQueueOnlyWhenNoSeatsInUse (0.00s)
 ```
 
-This is exactly the failure message the issue quotes. The PR's test stops at that assertion (`t.Fatalf`), so it never reaches the panic. My harness uses `Errorf` and carries on.
+This is exactly the failure message the issue quotes. The PR's test stops at that assertion (`t.Fatalf`), so it never reaches the panic. My harness uses `Errorf` and continues past the failed assertion.
 
 ## 2. Scenarios (`traces/*/pr-*.jsonl`)
 
-Same results from `go/logs/affected/*.log` and `go/logs/corrected/*.log`.
+The logs in `go/logs/affected/*.log` and `go/logs/corrected/*.log` show the same results.
 
 | Scenario | What it is | Affected | Corrected |
 | -- | -- | -- | -- |
-| `pr-panic` | The PR's scenario. 3 queues, 1 desired, lingering `r` and ordinary `s` share queue index 2. | exit 2, 9 events, panic `slice bounds out of range [3:2]` | exit 0, 9 events |
-| `pr-wrongqueue-executing` | Queue 0 holds `r` (lingering) and `s`. Queue 1 holds an executing `t`. | exit 1, 12 events, no panic. Queue 0 removed early at `s.Finish`. At `r`'s timer the stale index 0 removes queue 1 while `t` executes. `t` then finishes normally on a queue that is no longer in the slice. Final slice: `[q2]`. | exit 0, 12 events |
-| `pr-wrongqueue-waiting-crash` | As above, plus a waiting request `u` (width 3) in queue 1. | exit 2, 13 events. The timer's removal takes out queue 1 with `t` executing and `u` waiting. The dispatch that follows in the same callback panics: nil dereference. `u` is never dispatched. | exit 0, 15 events |
-| `pr-wrongqueue-waiting-lost` | As above, plus a waiting `v` (width 3) in queue 2, so the dispatch loop has something to find. | exit 2, 17 events. `u` is lost; `t` and `v` finish; then `totRequestsWaiting=1` with no waiting request in any queue, and the next dispatch panics (nil dereference). | exit 0, 18 events |
+| `pr-panic` | The PR's scenario: 3 queues, 1 desired, and a lingering `r` and an ordinary `s` that share queue index 2. | exit 2, 9 events, panic `slice bounds out of range [3:2]` | exit 0, 9 events |
+| `pr-wrongqueue-executing` | Queue 0 holds `r` (lingering) and `s`. Queue 1 holds an executing `t`. | exit 1, 12 events, no panic. `removeQueueIfEmptyLocked` removes queue 0 early, at `s.Finish`. When `r`'s timer fires, it uses `r`'s stale index 0 and removes queue 1 while `t` executes. `t` then finishes normally on a queue that is no longer in the slice. The final slice is `[q2]`. | exit 0, 12 events |
+| `pr-wrongqueue-waiting-crash` | As above, plus a waiting request `u` (width 3) in queue 1. | exit 2, 13 events. In the timer callback, `removeQueueIfEmptyLocked` removes queue 1 while `t` executes and `u` waits in it. The dispatch that follows in the same callback panics with a nil dereference, so the queue set never dispatches `u`. | exit 0, 15 events |
+| `pr-wrongqueue-waiting-lost` | As above, plus a waiting `v` (width 3) in queue 2, so the dispatch loop has something to find. | exit 2, 17 events. The queue set loses `u`, and `t` and `v` finish. After that, `totRequestsWaiting=1` while no queue holds a waiting request, and the next dispatch panics with a nil dereference. | exit 0, 18 events |
 
 ### `pr-panic`, affected
 
@@ -77,7 +77,7 @@ panic(...)
 created by ...eventclock.(*Fake).SetTime.func1
 ```
 
-(Line numbers are for the tree with patch 0002 applied. The stack top is `removeQueueAndUpdateIndexes` exactly as the issue says. The `[3:2]` is `queues[index+1:]` with `index=2` on a slice of length 2.)
+(The line numbers refer to the tree after `run.sh` applies patch 0002. The top of the stack is `removeQueueAndUpdateIndexes`, exactly as the issue says. The `[3:2]` is `queues[index+1:]` with `index=2` on a slice of length 2.)
 
 The trace's last line is the `panic` record, `msg: "runtime error: slice bounds out of range [3:2]"`, `post.panicked: true`.
 
@@ -104,11 +104,11 @@ OBS after r's timer: [q2(index=0,seats=0,waiting=0,exec=0)]; t executing=true
 OBS after t.Finish: [q2(index=0,seats=0,waiting=0,exec=0)]; totSeatsInUse=0 totRequestsWaiting=0
 ```
 
-Queue 1 was removed while `t` executed in it. `t` still held its seat (the set's `totSeatsInUse` counted it), then finished against a queue that no longer exists. Nothing failed except the harness's expectations (`got 1 queues after r released its seats, want 2`).
+`removeQueueIfEmptyLocked` removed queue 1 while `t` executed in it. `t` still held its seat (the set's `totSeatsInUse` counted it), then finished against a queue that no longer exists. Nothing failed except the harness's expectations (`got 1 queues after r released its seats, want 2`).
 
 ## 3. Random seeds (`traces/*/seed-NNNN.jsonl`)
 
-Generator: `go/harness/apf_trace_test.go`, `TestAPFRandom`. Per seed: 1 to 4 desired queues, concurrency limit 3 to 6, 2 to 5 flows, hand size 1 or 2, 40 to 79 steps. A step is an arrival (38%, width 1 to 3, 45% lingering for 0.1 to 3 s), a finish of a random executing request (38%), a reconfiguration to 1 to 5 queues (12%) or a clock advance of 0 to 3 s (12%). Then a drain: finish everything, fire every timer. Queue length limit 1000, so nothing is rejected; no cancellation; desired is always positive; every started request is finished exactly once.
+The generator is `TestAPFRandom` in `go/harness/apf_trace_test.go`. Each seed gets 1 to 4 desired queues, a concurrency limit of 3 to 6, 2 to 5 flows, a hand size of 1 or 2, and 40 to 79 steps. A step is an arrival (38%, width 1 to 3, 45% lingering for 0.1 to 3 s), a finish of a random executing request (38%), a reconfiguration to 1 to 5 queues (12%) or a clock advance of 0 to 3 s (12%). After the steps, the harness drains the queue set: it finishes everything and fires every timer. The queue length limit is 1000, so the queue set rejects nothing. The harness never cancels a request, always sets a positive desired number of queues, and finishes every started request exactly once.
 
 | | Affected (0002) | Corrected (0001 + 0002) |
 | -- | -- | -- |
@@ -122,30 +122,30 @@ Generator: `go/harness/apf_trace_test.go`, `TestAPFRandom`. Per seed: 1 to 4 des
 | of which no panic, early removal only | 58 | 0 |
 | Seeds with a wrong-queue removal | 28 (13 of them removed a queue with waiting or executing requests, all 13 ended in a panic) | 0 |
 
-"Hit" means the harness saw a queue leave the slice while it still had waiting, executing or lingering requests, or a removal of a queue that was not the finishing request's own, or a panic. In every exit-2 trace the last line is a `panic` record, and in no other trace is there one (checked over all 304 files).
+"Hit" means the harness saw a queue leave the slice while it still had waiting, executing or lingering requests, or a removal of a queue that was not the finishing request's own, or a panic. In every exit-2 trace the last line is a `panic` record, and no other trace has one. I checked this over all 304 files.
 
 Seeds that hit the bug on affected code:
 `2 13 26 27 41 46 53 59 62 67 69 74 76 82 84 87 88 99 101 102 104 108 112 113 119 124 131 132 148 150 151 169 172 175 179 180 183 185 187 195 203 204 208 210 213 217 218 221 224 226 227 231 236 238 242 248 251 258 260 264 266 267 268 269 274 275 277 280 281 283 284 285 286 288 289 292`
 
 
-## 4. Upstream's own tests with 0002 applied (`./run.sh upstream-tests`)
+## 4. Upstream's own tests with patch 0002 (`./run.sh upstream-tests`)
 
-`go test -count=1 ./pkg/util/flowcontrol/...` in `staging/src/k8s.io/apiserver`, exit code 0 for both variants:
+`run.sh` runs `go test -count=1 ./pkg/util/flowcontrol/...` in `staging/src/k8s.io/apiserver`, and it exits with code 0 for both variants:
 
 ```
 patches: 0002          ok  .../flowcontrol 51.176s, .../fairqueuing 0.295s, .../fairqueuing/queueset 0.574s, (all packages ok)
 patches: 0001 0002     ok  .../flowcontrol 51.160s, .../fairqueuing 0.204s, .../fairqueuing/queueset 0.448s, (all packages ok)
 ```
 
-The queueset package alone, `-v`: 29 top-level and 40 sub-tests pass with no patch, with 0002, and with 0001+0002 (0 failures). `go test -race` on the queueset package passes for all three.
+When I run the queueset package alone with `-v`, 29 top-level and 40 sub-tests pass with no patch, with 0002, and with 0001+0002 (0 failures). `go test -race` on the queueset package passes for all three.
 
 ## 5. Mutated traces (`uv run mutate.py`)
 
-30 files in `traces/mutated/`, six per kind, made from conforming corrected traces. `MANIFEST.tsv` gives the source, the mutated `seq` and why each must be rejected. Kinds: `drop-timer-fire`, `duplicate-timer-fire`, `early-queue-removal` (a busy queue deleted from one `post`), `change-seatsInUse` (+1 in one `post`), `swap-index` (two queues exchange `index` in one `post`; this one keeps the indexes a permutation, so only the comparison with the model's expected state can reject it). `seq` is renumbered after dropping or duplicating a line, so a gap in `seq` is not what gives the mutation away. I have not run these through the Lean checker.
+`mutate.py` writes 30 files to `traces/mutated/`, six per kind, from conforming corrected traces. `MANIFEST.tsv` gives each file's source, the `seq` of the line it changes, and the reason a checker must reject it. The kinds are `drop-timer-fire`, `duplicate-timer-fire`, `early-queue-removal` (deletes a busy queue from one `post`), `change-seatsInUse` (adds 1 in one `post`) and `swap-index` (two queues exchange `index` in one `post`). `swap-index` keeps the indexes a permutation, so only the comparison with the model's expected state can reject it. `mutate.py` renumbers `seq` after dropping or duplicating a line, so a gap in `seq` does not give the mutation away. I have not run these through the Lean checker.
 
 ## Not done, or limits
 
-- No real apiserver, no real clock. Everything uses the package's fake event clock, as the PR's test does.
-- No rejection, cancellation or exempt mode (out of scope). `QueueLengthLimit` is 1000.
+- I did not run a real apiserver or use a real clock. Everything uses the package's fake event clock, as the PR's test does.
+- The harness does not exercise rejection, cancellation or exempt mode, which are out of scope. `QueueLengthLimit` is 1000.
 - The harness never fires two timers at the same instant (`NOTES.md` item 11).
-- Hand sizes above 2 and more than 5 queues are not generated.
+- The generator never produces a hand size above 2 or more than 5 queues.

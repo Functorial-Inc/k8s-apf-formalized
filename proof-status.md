@@ -1,16 +1,16 @@
 # Proof status: what is proved, what is checked, what is trusted
 
-Toolchain: Lean `leanprover/lean4:v4.35.0`, Veil `v4.35.0` (git tag, pinned in `lake-manifest.json`), cvc5 through lean-cvc5 (`d19a134c`, in-process FFI). No Mathlib. Every claim below was reproduced with `make verify` and `make check-traces` on 2026-11-25 (macOS, Apple silicon).
+Toolchain: Lean `leanprover/lean4:v4.35.0`, Veil `v4.35.0` (a git tag that `lake-manifest.json` pins), cvc5 through lean-cvc5 (`d19a134c`, in-process FFI). The project does not use Mathlib. I reproduced every claim below by running `make verify` and `make check-traces` on 2026-11-25 (macOS, Apple silicon).
 
 There are three artifacts:
 
 * **Veil models.** `ApfQueueSet/Affected.lean` is the single source of the model. `scripts/gen_corrected.py` derives three files from it, and `make check-parallel` checks they are up to date:
-  * `Corrected.lean`: adds the conjunct `seatsInUse q = 0` in `removeQueueIfEmpty`. Unbounded verification only (`#check_invariants`). Keeps the trusted `assume` in `release`. **No model checking.**
-  * `CorrectedMC.lean`: adds the conjunct, **removes the `assume`**, adds the checked clauses `conservation_fo` and `conservation` (sum form and nonnegativity). The exhaustive model-checking runs live here.
-  * `AffectedMC.lean`: no conjunct, **no `assume`**, the same extra clauses. The counterexample run lives here.
+  * `Corrected.lean`: adds the conjunct `seatsInUse q = 0` in `removeQueueIfEmpty` and keeps the `assume` in `release`, which we trust (section 1b). This file runs only unbounded verification (`#check_invariants`) and **no model checking**.
+  * `CorrectedMC.lean`: adds the conjunct, **removes the `assume`**, and adds the clauses `conservation_fo` and `conservation` (sum form and nonnegativity), which the model checker checks. This file contains the exhaustive model-checking runs.
+  * `AffectedMC.lean`: has no conjunct and **no `assume`**, and adds the same extra clauses. This file contains the counterexample run.
 
   Apart from those edits, the module name and the header prose, every derived file is `Affected.lean` verbatim.
-* **Plain-Lean mirror** `ApfQueueSet/Mirror.lean`: the same model as ordinary Lean definitions, with one Boolean selecting the guard, and kernel-checked proofs. **The mirror corresponds to the Veil models by inspection, not by proof.** The representation differences are listed in its header and in NOTES-veil.md items 3 and 8.
+* **Plain-Lean mirror** `ApfQueueSet/Mirror.lean`: the same model as ordinary Lean definitions, with one Boolean selecting the guard, and kernel-checked proofs. **The mirror corresponds to the Veil models by inspection, and no proof connects them.** Its header and NOTES-veil.md items 3 and 8 list the representation differences.
 * **Trace checker** `tracecheck` (`ApfQueueSet/TraceCheck.lean`), which replays Go traces with the mirror's step function.
 
 ## 1. Unbounded results for the corrected model
@@ -48,7 +48,7 @@ def IndexIntegrity (s : St Q R) : Prop :=
 
 `Reachable rs true` is the closure of `Init` under `apply rs true`, the corrected model. The request universe `rs` must list every request exactly once, i.e. the request type is finite. Queue types are arbitrary. Widths and the desired count are unbounded naturals; seat counters are `Int`.
 
-Also kernel-checked:
+Lean's kernel also checks these theorems:
 
 ```lean
 theorem ApfQueueSet.Mirror.release_once_step :   -- transition form of release_once
@@ -70,7 +70,7 @@ theorem ApfQueueSet.Mirror.conservation_fo_reachable :   -- BOTH models; justifi
 
 ### 1b. Veil `#check_invariants` on `Corrected.lean`: SMT with proof reconstruction, plus three hand proofs
 
-Clauses (all universally quantified over capitalised variables). `index_integrity` is the conjunction of the four `index_integrity_*` clauses.
+Veil quantifies each clause universally over its capitalised variables. `index_integrity` is the conjunction of the four `index_integrity_*` clauses.
 
 ```
 safety    [release_once]            releases R ≤ 1
@@ -89,21 +89,21 @@ invariant [releases_count]          (phase R = released → releases R = 1) ∧ 
 
 Theory assumptions: `qnum Q1 = qnum Q2 → Q1 = Q2`, `qnum Q < maxIds`, `∀ i, i < maxIds → ∃ q, qnum q = i`.
 
-**Trusted assumption, used by the SMT proof:** `release` starts with
+**Trusted assumption that the SMT proof uses:** `release` starts with
 
 ```
 assume ∀ x, x ≠ r ∧ (phase x = executing ∨ phase x = lingering) ∧ rq x = rq r →
   (width r : Int) + (width x : Int) ≤ seatsInUse (rq r)
 ```
 
-This is a first-order consequence of `conservation`. In both models, `safe_retirement` for `finish` and `timerFire` depends on it: it is what turns `seatsInUse q = 0` into "no other holder in `q`". The Veil result is therefore "the clauses are inductive in every execution where this `assume` holds". The `assume` exists only in `Affected.lean` and `Corrected.lean`, and neither runs a model check. The model-checking variants drop it and check the same formula as a clause (section 3). `Mirror.conservation_fo_reachable` (1a) proves that the `assume` holds in every reachable state of the mirror of either model, so it removes no executions, up to the by-inspection correspondence. It is an `assume` and not a `trusted invariant` because of a Veil bug (NOTES-veil.md item 10).
+This is a first-order consequence of `conservation`. In both models, `safe_retirement` for `finish` and `timerFire` depends on it, because it turns `seatsInUse q = 0` into "no other holder in `q`". The Veil result is therefore "the clauses are inductive in every execution where this `assume` holds". The `assume` exists only in `Affected.lean` and `Corrected.lean`, and neither runs a model check. `scripts/gen_corrected.py` drops it from the model-checking variants, and the model checker checks the same formula there as a clause (section 3). `Mirror.conservation_fo_reachable` (1a) proves that the `assume` holds in every reachable state of the mirror of either model, so it removes no executions, up to the by-inspection correspondence. It is an `assume` and not a `trusted invariant` because of a Veil bug (NOTES-veil.md item 10).
 
-Results: 72 checks, 12 for the initializer and 12 for each of the 5 actions. All 72 pass.
+Veil runs 72 checks, 12 for the initializer and 12 for each of the 5 actions, and all 72 pass.
 
 | How discharged | VCs | Trust |
 | -- | -- | -- |
-| cvc5 through lean-smt, `set_option veil.smt.trust false` | 69 | Veil reconstructs a Lean proof from cvc5's answer. The "Trusting SMT solver for N goals" warning that Veil prints under `trust true` (63 goals) does not appear. These proofs are not exported as named declarations, so `#print axioms` cannot be run on them. I have not audited lean-smt's reconstruction for its own trusted steps. |
-| hand-written Lean proofs (`prove_veil_invariant_goal`, `@[veil]`) | 3: `index_integrity_onto` for `reconfigure`, `finish`, `timerFire` | Kernel-checked. cvc5 times out on these. Proofs at the end of `Corrected.lean`, lemmas `ApfQueueSet.onto_remove` and `ApfQueueSet.onto_grow` in `Lemmas.lean`. |
+| cvc5 through lean-smt, `set_option veil.smt.trust false` | 69 | Veil reconstructs a Lean proof from cvc5's answer. The "Trusting SMT solver for N goals" warning that Veil prints under `trust true` (63 goals) does not appear. Veil does not export these proofs as named declarations, so I cannot run `#print axioms` on them. I have not audited lean-smt's reconstruction for its own trusted steps. |
+| hand-written Lean proofs (`prove_veil_invariant_goal`, `@[veil]`) | 3: `index_integrity_onto` for `reconfigure`, `finish`, `timerFire` | Kernel-checked. cvc5 times out on these VCs. The proofs are at the end of `Corrected.lean`, and the lemmas `ApfQueueSet.onto_remove` and `ApfQueueSet.onto_grow` are in `Lemmas.lean`. |
 
 The three hand proofs have the statement Veil generates, of the form
 
@@ -113,7 +113,7 @@ ApfCorrected.timerFire_index_integrity_onto : ∀ ... (r : req),
     (ApfCorrected.Assumptions ...) (ApfCorrected.Invariants ...) (ApfCorrected.index_integrity_onto ...)
 ```
 
-(the same for `finish` and `reconfigure`).
+and the proofs for `finish` and `reconfigure` have the same form.
 
 ### 1c. What `conservation` gets from each side
 
@@ -126,8 +126,8 @@ ApfCorrected.timerFire_index_integrity_onto : ∀ ... (r : req),
 
 ## 2. The affected model
 
-* **Veil explicit-state counterexample** to `safe_retirement`, found on `AffectedMC.lean` (no `assume`): `counterexamples/affected-safe_retirement.veil-mc.txt`. Instance `queue := Fin 2, req := Fin 2, num := Fin 3, maxIds := 2`, interpreted mode, 7 actions: arrive, dispatch, arrive, finish (lingers), dispatch, reconfigure(1), finish. The last `finish` removes a queue in which a request still lingers.
-* **Kernel-checked panic witness** for the issue's exact sequence (3 queues, desired 3 → 1, two requests on the last queue, the lingerer finishes first):
+* **Veil explicit-state counterexample to `safe_retirement`**: Veil's model checker found it on `AffectedMC.lean` (no `assume`), and `counterexamples/affected-safe_retirement.veil-mc.txt` records it. The instance is `queue := Fin 2, req := Fin 2, num := Fin 3, maxIds := 2` in interpreted mode, and the trace has 7 actions: arrive, dispatch, arrive, finish (lingers), dispatch, reconfigure(1), finish. The last `finish` removes a queue in which a request still lingers.
+* **Kernel-checked panic witness for the issue's exact sequence**: the sequence has 3 queues and desired 3 → 1, puts two requests on the last queue, and the lingering request finishes first.
 
   ```lean
   theorem ApfQueueSet.Mirror.issue_144077_affected :
@@ -138,11 +138,11 @@ ApfCorrected.timerFire_index_integrity_onto : ∀ ... (r : req),
     ∃ s : St Nat Nat, Reachable [0, 1] false s ∧ s.panicked = true ∧ s.discarded = true
   ```
 
-  Proved by `decide`, which the kernel evaluates. A step-by-step printout is in `counterexamples/issue-144077-mirror-replay.txt`. Veil itself does not produce a panic trace (NOTES-veil.md item 12).
+  Each proof is `decide`, which Lean's kernel evaluates. A step-by-step printout is in `counterexamples/issue-144077-mirror-replay.txt`. Veil itself does not produce a panic trace (NOTES-veil.md item 12).
 
 ## 3. Bounded model checking of the corrected model (`CorrectedMC.lean`, exhaustive)
 
-**No `assume` anywhere in this model.** `release` is exactly the Go logic, and the formula the unbounded proof assumes is a checked clause. No `maxDepth`, so every reachable state of each instance is explored. Each state is checked against all 11 clauses of section 1b plus:
+**This model contains no `assume`.** `release` is exactly the Go logic, and the model checker checks the formula that the unbounded proof assumes as a clause. The runs set no `maxDepth`, so the model checker explores every reachable state of each instance and checks each state against all 11 clauses of section 1b plus:
 
 ```
 safety [conservation_fo]
@@ -156,7 +156,7 @@ safety [conservation]
   (0 : Int) ≤ seatsInUse Q ∧ (0 : Int) ≤ totSeats
 ```
 
-The sum ranges over `Veil.Enumeration.allValues`, which comes from `instantiate reqEnum : Veil.Enumeration req`. For `req := Fin n` it is `List.finRange n`, each request once. The variant sets `veil.deferVCGeneration true` and runs no verification command, so no VC is generated for it. A sanity check (a copy with `+ (if totSeats = 2 then 1 else 0)` on the left of the sum) fails at the first state with `totSeats = 2`, so the clause really is evaluated. `num := Fin k` gives widths and desired counts `1 .. k-1`.
+The sum ranges over `Veil.Enumeration.allValues`, which comes from `instantiate reqEnum : Veil.Enumeration req`. For `req := Fin n` it is `List.finRange n`, which lists each request once. The variant sets `veil.deferVCGeneration true` and runs no verification command, so Veil generates no VC for it. A sanity check (a copy with `+ (if totSeats = 2 then 1 else 0)` on the left of the sum) fails at the first state with `totSeats = 2`, so the model checker really does evaluate the clause. `num := Fin k` gives widths and desired counts `1 .. k-1`.
 
 | queue | req | num (widths, desired) | maxIds | mode | states | result |
 | -- | -- | -- | -- | -- | -- | -- |
@@ -166,13 +166,13 @@ The sum ranges over `Veil.Enumeration.allValues`, which comes from `instantiate 
 
 The state counts are identical to the earlier runs with the `assume`, which is consistent with the `assume` never having dropped a transition at these bounds.
 
-Also run during the first round (with the `assume`, same counts expected but not re-run): `(3,2,4)` 20,814 states, `(3,3,3)` 112,609, `(4,3,3)` 141,025, `(3,4,3)` 3,818,435, all with no violation. `(4,4,4)` did not finish in 10 minutes and was stopped.
+During the first round I also ran these instances with the `assume`, and I did not re-run them without it (I expect the same counts): `(3,2,4)` 20,814 states, `(3,3,3)` 112,609, `(4,3,3)` 141,025, `(3,4,3)` 3,818,435, all with no violation. `(4,4,4)` did not finish in 10 minutes, and I stopped it.
 
 Timing (clean-copy build, Apple silicon): `ApfQueueSet.CorrectedMC` 51 s (three model checks, including compiling the checker binary); `ApfQueueSet.Corrected` 19 s (`#check_invariants` with proof reconstruction); `ApfQueueSet.AffectedMC` 9.4 s; `ApfQueueSet.Affected` 11 s; `ApfQueueSet.Mirror` 2.2 s. These are the per-module times lake reported in the clean-copy build (3 min 16 s in total, including all dependencies). Veil does not report per-run times.
 
 ## 3b. The naive and the strict reading of "empty" (mirror, kernel-checked)
 
-The interface says a queue is not discarded "unless and until it is undesired and empty". The mirror now has two ghost flags, both set only by `removeAt`:
+The doc comment on `QueueSet.BeginConfigChange` in `interface.go` says "reconfiguration does not discard any queue unless and until it is undesired and empty". The mirror has two ghost flags, and only `removeAt` sets them:
 
 * `discarded` (the strict reading, unchanged): the removed queue had a request that was waiting, executing **or lingering**;
 * `discardedNaive` (the naive reading, the one the affected guard tests): the removed queue had a request that was waiting or executing.
@@ -209,15 +209,15 @@ theorem ApfQueueSet.Mirror.wrong_queue_naive_violated :
 
 What these say, exactly:
 
-* `clean_until_strict_discard` is the "naive flag is never first" fact, for **both** models (it holds for any guard, so in particular the affected one, `c = false`). In any reachable state where no queue with a waiting, executing or lingering request has been discarded yet, none with a waiting or executing request has been discarded either; nothing has panicked; every waiting, executing or lingering request's queue is in the slice; and stored indexes match slice positions. It is a state invariant, not a statement about traces. Because the flags never reset, it implies that in every execution the strict flag is set no later than the naive flag, and no panic happens while the strict flag is clear. I did not state that trace-level corollary as a separate theorem.
+* `clean_until_strict_discard` is the "naive flag is never first" fact, for **both** models (it holds for any guard, so in particular the affected one, `c = false`). In any reachable state where `removeAt` has not yet removed a queue with a waiting, executing or lingering request, it has not removed one with a waiting or executing request either; no panic has happened; every waiting, executing or lingering request's queue is in the slice; and stored indexes match slice positions. It is a state invariant, not a statement about traces. Because the flags never reset, it implies that in every execution the strict flag is set no later than the naive flag, and no panic happens while the strict flag is clear. I did not state that trace-level corollary as a separate theorem.
 * `naive_imp_discarded` is the trivial half: a naive discard is a strict discard.
 * (b) On the issue's sequence, the first bad step (request 1's `finish` removes queue 2 while request 0 lingers in it) breaks the strict reading and satisfies the naive one. No panic yet.
-* (c) `wrongQueueActions` = `[arrive 0 0 1 true, dispatch 0, arrive 1 0 1 false, dispatch 1, arrive 2 1 1 false, dispatch 2, arrive 3 1 1 false, reconfigure 1 [], finish 0, finish 1, timerFire 0]` from `issueInit` (3 queues, desired 3). After 10 actions, request 1's `finish` has removed queue 0 early; the naive flag is still false. The 11th action, request 0's timer, removes the stale index 0, which is now queue 1 holding request 2 (executing) and request 3 (waiting): the naive reading is violated too, later and at a different queue. No panic, because index 0 is in range.
+* (c) `wrongQueueActions` = `[arrive 0 0 1 true, dispatch 0, arrive 1 0 1 false, dispatch 1, arrive 2 1 1 false, dispatch 2, arrive 3 1 1 false, reconfigure 1 [], finish 0, finish 1, timerFire 0]` from `issueInit` (3 queues, desired 3). After 10 actions, request 1's `finish` has removed queue 0 early; the naive flag is still false. The 11th action, request 0's timer, removes the stale index 0, which is now queue 1 holding request 2 (executing) and request 3 (waiting), so this removal violates the naive reading too, later and at a different queue. No panic, because index 0 is in range.
 * `corrected_naive_safe` follows from `corrected_safe` and `clean_until_strict_discard`.
 
-Proofs: `InvS` (in `Mirror.lean`) is an inductive invariant for any guard. It holds structural facts (`IdxOk`, used queues), `discardedNaive → discarded`, and "`discarded = false` → no panic ∧ live requests' queues in the slice". (b) and (c) are `decide`, evaluated by the kernel. The step-by-step states are in `counterexamples/issue-144077-mirror-replay.txt`. Adding the field changed no existing theorem statement; all earlier theorems still check.
+Proofs: `InvS` (in `Mirror.lean`) is an inductive invariant for any guard. It holds structural facts (`IdxOk`, used queues), `discardedNaive → discarded`, and "`discarded = false` → no panic ∧ live requests' queues in the slice". The proofs of (b) and (c) are `decide`, which Lean's kernel evaluates. The step-by-step states are in `counterexamples/issue-144077-mirror-replay.txt`. Adding the field changed no existing theorem statement; all earlier theorems still check.
 
-## 4. `#print axioms` (from `ApfQueueSet/Axioms.lean`, saved in `axioms.txt`)
+## 4. `#print axioms` (from `ApfQueueSet/Axioms.lean`; `make axioms` writes the output to `axioms.txt`)
 
 ```
 'ApfQueueSet.Mirror.corrected_safe' depends on axioms: [propext, Classical.choice, Quot.sound]
@@ -252,13 +252,13 @@ No `sorryAx`, no `Lean.ofReduceBool` (no `native_decide`), no project axioms.
 | `traces/handmade/` others | 2 | rejected (early retirement: `safe_retirement`; malformed JSON at line 5) | rejected |
 | `traces/affected/` | 304 | 224 conform, 80 rejected | rejected exactly for the 76 bug-hitting seeds in go/RESULTS.md and the 4 `pr-*` scenarios: **304 of 304 agree** |
 
-Every rejected affected trace fails first on `safe_retirement`: at a release, the `post` has removed a queue in which some request is still waiting, executing or lingering. The first failure is at a `finish` record in 58 traces and at a `timer_fire` record in 22. That includes the 18 traces that later panic, so the checker never reaches their `panic` record. Mutated traces are rejected for the reason their kind predicts: `change-seatsInUse` for `conservation`, `duplicate-timer-fire` for `release_once` (the event is not enabled), `early-queue-removal` for `safe_retirement` (and `index_integrity`, since the indexes are no longer contiguous). `swap-index` violates none of the four properties in the snapshot and is rejected only because the model predicts different indexes. `drop-timer-fire` is rejected as a model mismatch, with `conservation` or `safe_retirement` violated in the snapshot. All verdicts are in `counterexamples/tracecheck-all.txt`.
+Every rejected affected trace fails first on `safe_retirement`: at a release, the `post` has removed a queue in which some request is still waiting, executing or lingering. The first failure is at a `finish` record in 58 traces and at a `timer_fire` record in 22. That includes the 18 traces that later panic, so the checker never reaches their `panic` record. The checker rejects each mutated trace for the reason its kind predicts: `change-seatsInUse` for `conservation`, `duplicate-timer-fire` for `release_once` (the event is not enabled), `early-queue-removal` for `safe_retirement` (and `index_integrity`, since the indexes are no longer contiguous). `swap-index` violates none of the four properties in the snapshot, and the checker rejects it only because the model predicts different indexes. The checker rejects `drop-timer-fire` as a model mismatch, with `conservation` or `safe_retirement` violated in the snapshot. All verdicts are in `counterexamples/tracecheck-all.txt`.
 
 ## 6. Everything that is trusted
 
 1. Lean's kernel and the three standard axioms.
 2. **The correspondence between the mirror and the Veil models, by inspection.** The mirror carries the unbounded `conservation` result and the trace checker's step function.
-3. **The `assume` in Veil's `release`, for the unbounded SMT result only** (section 1b). It is discharged by `Mirror.conservation_fo_reachable`, through item 2. No model-checking result depends on it: `CorrectedMC.lean` and `AffectedMC.lean` do not contain it.
+3. **The `assume` in Veil's `release`, for the unbounded SMT result only** (section 1b). `Mirror.conservation_fo_reachable` discharges it, through item 2. No model-checking result depends on it: `CorrectedMC.lean` and `AffectedMC.lean` do not contain it.
 4. Veil's VC generation (the `meetsSpecificationIfSuccessfulAssuming` statements and their connection to the action semantics), and lean-smt's proof reconstruction for the 69 SMT-discharged VCs.
 5. The model checker's implementation, and `Veil.Enumeration` for `Fin n` listing each request once, for section 3, which is bounded in any case.
 6. That the model abstracts the Go code faithfully (`docs/model-contract.md` scope; NOTES-veil.md).

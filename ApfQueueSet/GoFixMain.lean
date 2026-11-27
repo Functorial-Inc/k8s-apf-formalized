@@ -3,7 +3,7 @@ import ApfQueueSet.Synth
 open ApfQueueSet.Synth
 
 /-- `gofix strict|naive`: print `removeQueueIfEmptyLocked` with the guard
-derived from that reading of "empty". `strict` is the fix; `naive` must
+that `derive` computes from that reading of "empty". `strict` is the fix; `naive` must
 reproduce the upstream function byte for byte (go/gen-fix.sh checks this). -/
 def main (args : List String) : IO UInt32 := do
   match args with

@@ -4,8 +4,8 @@
 #   corrected        apply the fix (0001, or 0003 with APF_FIX=0003) + 0002, run the harness, write traces/corrected/*.jsonl
 #   pr-test          the PR's own regression test, unmodified, on unpatched, 0002 and 0001+0002 trees
 #   upstream-tests   apply 0002 (and then 0001+0002), run upstream's own flowcontrol tests
-# SEEDS is the number of random seeds (default 300). Idempotent: the upstream tree is
-# restored on exit and old output for the chosen mode is deleted first.
+# SEEDS is the number of random seeds (default 300). The script is idempotent: it
+# restores the upstream tree on exit and first deletes old output for the chosen mode.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
@@ -15,7 +15,7 @@ UP="$HERE/upstream"
 MOD="$UP/staging/src/k8s.io/apiserver"
 PKG=./pkg/util/flowcontrol/fairqueuing/queueset
 PKGDIR="$MOD/pkg/util/flowcontrol/fairqueuing/queueset"
-# APF_FIX=0003 uses the fix generated from the Lean spec (go/gen-fix.sh) in place of PR #144078's (0001).
+# APF_FIX=0003 uses the fix that go/gen-fix.sh generates from the Lean spec in place of PR #144078's (0001).
 FIX="${APF_FIX:-0001}"
 LOGS="$HERE/logs/$MODE"
 [ "$FIX" = 0001 ] || LOGS="$HERE/logs/$MODE-fix$FIX"
@@ -41,7 +41,7 @@ if [ "$MODE" = upstream-tests ]; then
 fi
 
 if [ "$MODE" = pr-test ]; then
-  # The PR author's own regression test, unmodified, on three trees.
+  # Run the PR author's own regression test, unmodified, on three trees.
   for variant in "none" "0002" "$FIX 0002"; do
     restore
     [ "$variant" = none ] || for n in $variant; do apply "$(cd "$HERE/patches" && ls | grep "^$n-")"; done

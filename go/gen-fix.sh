@@ -2,14 +2,16 @@
 # Generate the fix for kubernetes/kubernetes#144077 from the Lean specification.
 #
 #   1. build `gofix` (ApfQueueSet/Synth.lean, ApfQueueSet/GoFixMain.lean)
-#   2. `gofix naive` spliced into queueset.go must leave the pinned upstream file
-#      unchanged, byte for byte. This checks the generator's template and the
-#      observation table against the code that is really there.
-#   3. `gofix strict` spliced into queueset.go, gofmt'd, is the fix. Its diff is
-#      written to go/patches/0003-fix-from-spec.patch.
-#   4. the resulting file is compared with the file PR #144078 produces (0001).
+#   2. splicing `gofix naive` into queueset.go must leave the pinned upstream
+#      file unchanged, byte for byte. This checks the generator's template and
+#      the observation table against the code that is really there.
+#   3. splicing `gofix strict` into queueset.go gives the fix, which must be
+#      gofmt-clean. The script writes its diff to go/patches/0003-fix-from-spec.patch.
+#   4. the script compares the resulting file with the file that PR #144078
+#      (0001) produces.
 #
-# Exit 0 only if 2 holds and the generated file is gofmt-clean. Step 4 is reported.
+# The script exits 0 only if step 2 holds and the generated file is gofmt-clean.
+# It reports the result of step 4 without failing on it.
 # With --check, also fail if the committed 0003 patch differs from the regenerated one.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

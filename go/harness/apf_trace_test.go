@@ -14,15 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Harness for the k8s-apf-formalized project: drives one queueSet through
-// scenarios inside the scope of docs/model-contract.md and writes the trace
-// that trace.go emits. Copied into this package by go/run.sh; not part of
-// any Kubernetes patch.
+// This is the harness for the k8s-apf-formalized project. It drives one
+// queueSet through scenarios inside the scope of docs/model-contract.md and
+// writes the trace that trace.go emits. go/run.sh copies it into this package,
+// and it is not part of any Kubernetes patch.
 //
-// Each test is selected by an environment variable and skips otherwise:
+// An environment variable selects each test, and the test skips otherwise:
 //   APF_SCENARIO=pr-panic|pr-wrongqueue-executing|pr-wrongqueue-waiting-crash|pr-wrongqueue-waiting-lost
 //   APF_SEED=<n>   APF_TRACE_DIR=<dir>
-// One scenario per process, because on affected code the timer goroutine
+// Each process runs one scenario, because on affected code the timer goroutine
 // panics and takes the process down (exit status 2).
 
 package queueset
@@ -65,7 +65,7 @@ type apfEnv struct {
 	panicked  bool
 	panicMsg  string
 	early     int // queue left the slice while it still had waiting, executing or lingering requests
-	wrong     int // the queue removed was not the queue of the request whose action caused it
+	wrong     int // the removed queue was not the queue of the request whose action caused the removal
 	wrongBusy int // wrong removals of a queue that still had waiting or executing requests
 	summaryOK bool
 }
@@ -97,8 +97,8 @@ func apfNew(t *testing.T, name string, qCfg fq.QueuingConfig, limit int) *apfEnv
 	return e
 }
 
-// sink is installed as traceSink. It is called with qs.lock held, so it must
-// not call back into the queueSet.
+// apfNew installs sink as traceSink. traceLocked calls it with qs.lock held,
+// so it must not call back into the queueSet.
 func (e *apfEnv) sink(line []byte) {
 	if _, err := e.out.Write(append(line, '\n')); err != nil {
 		panic(err)
@@ -126,8 +126,9 @@ func (e *apfEnv) sink(line []byte) {
 	}
 }
 
-// watchRemovals compares consecutive snapshots. It is a quick independent
-// detector for classifying runs; the Lean checker is the real judge.
+// watchRemovals compares consecutive snapshots. It is a quick, independent
+// check for classifying runs. The Lean trace checker decides whether a trace
+// conforms.
 func (e *apfEnv) watchRemovals(rec *traceRecord) {
 	now := map[int]bool{}
 	for _, q := range rec.Post.Queues {
@@ -161,10 +162,10 @@ func (e *apfEnv) watchRemovals(rec *traceRecord) {
 	}
 }
 
-// guard is deferred by every test. A panic on the test goroutine that the
-// instrumentation did not already record (for example a nil dereference in
-// dispatch after a waiting request was lost) gets a panic record here. The
-// panic is then propagated unchanged.
+// Every test defers guard. If the instrumentation did not already record a
+// panic on the test goroutine (for example a nil dereference in dispatch after
+// the queueSet lost a waiting request), guard writes a panic record for it.
+// guard then panics again with the same value.
 func (e *apfEnv) guard() {
 	if p := recover(); p != nil {
 		if !e.panicked {
@@ -267,8 +268,8 @@ func TestAPFScenario(t *testing.T) {
 	}
 }
 
-// apfPRPanic is the PR's test, with Fatalf turned into Errorf so that the
-// clock still advances on affected code. The shared queue is the last one,
+// apfPRPanic is the PR's test, except that it calls Errorf where the PR calls
+// Fatalf, so that the clock still advances on affected code. The shared queue is the last one,
 // so the stale index (2) is past the end of the shortened slice (2 queues).
 func apfPRPanic(t *testing.T) {
 	e := apfNew(t, "pr-panic", apfCfg("pr-panic", 3, 1), 10)
@@ -301,11 +302,12 @@ func apfPRPanic(t *testing.T) {
 	}
 }
 
-// apfWrongQueue makes the stale index land in range. Three queues, one
-// desired. Queue 0 holds a lingering request r and an ordinary one s. Queue 1
-// holds an executing request t. When s finishes, queue 0 is removed early.
-// When r's timer fires, its stale index 0 now names queue 1, which is removed
-// although t executes in it. With waiter, queue 1 also holds a waiting request
+// apfWrongQueue makes the stale index land in range. The queueSet starts with
+// three queues, and the reconfiguration sets the desired count to one. Queue 0
+// holds a lingering request r and an ordinary one s. Queue 1 holds an executing
+// request t. When s finishes, removeQueueIfEmptyLocked removes queue 0 early.
+// When r's timer fires, its stale index 0 now names queue 1, and
+// removeQueueIfEmptyLocked removes queue 1 although t executes in it. With waiter, queue 1 also holds a waiting request
 // u that is too wide to run until t finishes. With other, queue 2 holds a
 // waiting request v as well, so that totRequestsWaiting stays consistent with
 // some queue in the slice.
@@ -427,7 +429,7 @@ func TestAPFRandom(t *testing.T) {
 			e.advance(time.Duration(rng.Intn(3000)) * time.Millisecond)
 		}
 	}
-	// Drain: every started request is finished exactly once, every timer fires.
+	// Drain: finish every started request exactly once, and let every timer fire.
 	for {
 		for len(e.ready) > 0 {
 			e.finish(e.reqs[e.ready[rng.Intn(len(e.ready))]])

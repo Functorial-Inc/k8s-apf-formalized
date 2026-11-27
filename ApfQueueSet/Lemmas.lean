@@ -1,6 +1,6 @@
 module
 
-/-! Plain Lean lemmas used by the hand-written proofs in `Corrected.lean`.
+/-! Plain Lean lemmas that the hand-written proofs in `Corrected.lean` use.
 
 They state, over arbitrary functions, the two facts behind
 `index_integrity_onto` ("every slice position below `len` is taken"):
@@ -10,8 +10,8 @@ They state, over arbitrary functions, the two facts behind
 * `onto_grow`: appending fresh queues numbered `created ..` at positions
   `len .. n-1` keeps positions `0 .. n-1` taken.
 
-The statements are shaped exactly like the goals Veil's `unveil` produces, so
-the proofs in `Corrected.lean` just apply them. -/
+Each statement has exactly the shape of a goal that Veil's `unveil` produces,
+so the proofs in `Corrected.lean` just apply them. -/
 
 public section
 

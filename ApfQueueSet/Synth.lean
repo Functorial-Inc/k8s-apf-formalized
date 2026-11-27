@@ -2,13 +2,14 @@ import ApfQueueSet.Mirror
 
 /-! # From the specification of "empty" to the Go guard
 
-`interface.go` says a queue is discarded only when it is "undesired and
-empty". This file
+The doc comment on `QueueSet.BeginConfigChange` in `interface.go` says that
+reconfiguration discards a queue only when it is "undesired and empty". This
+file
 
 1. states that sentence as a Lean predicate, parameterised by a *reading* of
    "empty": the list of request phases that make a queue non-empty;
-2. derives a guard from a reading, as a list of observations the Go `queue`
-   struct can actually make (`derive`);
+2. derives a guard from a reading, as a list of observations that the Go code
+   can actually test (`derive`);
 3. proves that the guard derived from the strict reading is exactly the guard
    of the corrected model (`eval_derive_strict`), so `Mirror.corrected_safe`
    is a theorem about it, and that in every reachable state of that model it
@@ -20,10 +21,10 @@ empty". This file
 5. prints a guard as Go (`goFunction`). `GoFixMain.lean` wraps that in an
    executable, and `go/gen-fix.sh` splices its output into `queueset.go`.
 
-What is trusted here, and not proved: the table `Obs.go` (that each Go
+What we trust here and do not prove: the table `Obs.go` (that each Go
 expression reads the quantity `Obs.eval` says it reads), the Go text around
-the condition in `goFunction` (copied from upstream), and everything already
-listed as trusted for the mirror. See `docs/spec-to-go.md`. -/
+the condition in `goFunction` (which we copied from upstream), and everything
+we already trust for the mirror. See `docs/spec-to-go.md`. -/
 
 set_option linter.deprecated false
 set_option linter.unusedSectionVars false
@@ -45,8 +46,8 @@ def strictReading : Reading := [.waiting, .executing, .lingering]
 section Spec
 variable {Q R : Type} [DecidableEq Q] [DecidableEq R]
 
-/-- **The specification of "empty".** No request assigned to `q` is in one of
-the phases of the reading. -/
+/-- **The specification of "empty".** No request `r` with `rq r = q` is in one
+of the phases of the reading. -/
 def EmptyOf (ps : Reading) (rs : List R) (s : St Q R) (q : Q) : Prop :=
   ∀ r ∈ rs, s.rq r = q → s.phase r ∉ ps
 
@@ -97,8 +98,8 @@ def detector : Phase → Option Obs
   | .lingering => some .noSeatsInUse
   | .fresh | .released => none
 
-/-- **The derivation.** "undesired" first, then one test per phase of the
-reading. -/
+/-- **The derivation.** The guard tests "undesired" first, then adds one test
+per phase of the reading. -/
 def derive (ps : Reading) : Guard := .excess :: ps.filterMap detector
 
 section Semantics

@@ -6,7 +6,7 @@
 # lake build elaborates every module, which runs:
 #   Affected.lean    : the model only (source of the three generated files)
 #   AffectedMC.lean  : #model_check, finds the safe_retirement counterexample
-#                      (reported as info, not an error)
+#                      (Veil reports it as info, not an error)
 #   Corrected.lean   : #check_invariants (SMT with proof reconstruction + 3
 #                      hand proofs), with the trusted `assume` in `release`
 #   CorrectedMC.lean : three exhaustive #model_check runs, no `assume`
@@ -17,7 +17,8 @@ verify: check-parallel build axioms
 build:
 	lake build
 
-# Corrected.lean is generated from Affected.lean; they must differ only in the guard.
+# scripts/gen_corrected.py generates Corrected.lean from Affected.lean; the two
+# must differ only in the guard.
 check-parallel:
 	uv run scripts/gen_corrected.py --check
 
