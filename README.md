@@ -334,6 +334,6 @@ The model leaves out virtual time, the round-robin index, the concurrency limit,
 - As of November 25, 2026 we found no public formal model of APF queue retirement and seat accounting. That is the result of a dated search, and we do not claim that no such model exists.
 - The VERSE lab develops [Veil](https://github.com/verse-lab/veil). To learn Lean, see [Functorial Academy](https://academy.functorial.inc/).
 
-The patches under `go/patches/` modify Kubernetes source code, which uses the Apache 2.0 license.
+This repository uses the Apache License 2.0 (see [`LICENSE`](LICENSE)). The patches under `go/patches/` modify Kubernetes source code, which also uses the Apache License 2.0.
 
 Made by [Functorial](https://functorial.inc). Our [principles](https://functorial.inc/principles): make the claim inspectable, state the conditions and the scope, own the meaning.
