@@ -16,3 +16,8 @@
 'ApfCorrected.timerFire_index_integrity_onto' depends on axioms: [propext, Classical.choice, Quot.sound]
 'ApfCorrected.finish_index_integrity_onto' depends on axioms: [propext, Classical.choice, Quot.sound]
 'ApfCorrected.reconfigure_index_integrity_onto' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ApfQueueSet.Synth.eval_derive_strict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ApfQueueSet.Synth.eval_derive_naive' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ApfQueueSet.Synth.derived_strict_iff_spec' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ApfQueueSet.Synth.naive_guard_unsound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ApfQueueSet.Synth.strict_guard_holds_back' depends on axioms: [propext, Classical.choice, Quot.sound]

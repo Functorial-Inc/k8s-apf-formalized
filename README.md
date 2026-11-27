@@ -279,6 +279,26 @@ uv run mutate.py         # regenerate traces/mutated
 
 The first `lake build` fetches Veil and cvc5 and takes a few minutes. Trace generation is deterministic: two runs give identical files.
 
+## From the specification to the Go fix
+
+The fix can be generated from the Lean specification instead of written by hand.
+
+```
+make gen-fix     # writes go/patches/0003-fix-from-spec.patch
+make check-fix   # runs the Go code with the generated fix, replays its traces in Lean
+```
+
+`ApfQueueSet/Synth.lean` states "empty" as a list of request phases, derives a guard from that
+list, proves the derived guard is true exactly when the queue is undesired and empty
+(`derived_strict_iff_spec`), and prints it as Go.
+
+- **Strict reading** (waiting, executing, lingering): the output is byte-identical to `queueset.go` with PR #144078 applied.
+- **Naive reading** (waiting, executing): the output is byte-identical to the affected upstream code.
+
+The bug is the difference between the two lists. The table from model observations to Go
+expressions is trusted, and there is still no refinement proof. Details and the full ledger are in
+[docs/spec-to-go.md](docs/spec-to-go.md).
+
 ## Assumptions and scope
 
 The guarantee applies only where these hold. Each one is a place where the real system can leave the model.

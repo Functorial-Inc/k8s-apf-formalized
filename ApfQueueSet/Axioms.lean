@@ -1,5 +1,6 @@
 import ApfQueueSet.Corrected
 import ApfQueueSet.Mirror
+import ApfQueueSet.Synth
 
 /-! `#print axioms` for every final theorem. `make axioms` saves the output to
 `proof-status.md`'s appendix source, `axioms.txt`. -/
@@ -29,3 +30,10 @@ import ApfQueueSet.Mirror
 #print axioms ApfCorrected.timerFire_index_integrity_onto
 #print axioms ApfCorrected.finish_index_integrity_onto
 #print axioms ApfCorrected.reconfigure_index_integrity_onto
+
+-- From the specification of "empty" to the Go guard (Synth.lean)
+#print axioms ApfQueueSet.Synth.eval_derive_strict
+#print axioms ApfQueueSet.Synth.eval_derive_naive
+#print axioms ApfQueueSet.Synth.derived_strict_iff_spec
+#print axioms ApfQueueSet.Synth.naive_guard_unsound
+#print axioms ApfQueueSet.Synth.strict_guard_holds_back

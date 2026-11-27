@@ -1,4 +1,6 @@
 # Lean/Veil side of k8s-apf-formalized. See proof-status.md.
+# Spec to Go: see docs/spec-to-go.md.
+.PHONY: gen-fix check-fix
 .PHONY: verify build check-parallel axioms counterexamples check-traces tracecheck
 
 # lake build elaborates every module, which runs:
@@ -36,4 +38,17 @@ tracecheck:
 	lake build tracecheck
 
 check-traces: tracecheck
+	scripts/check_traces.sh
+
+# Derive the Go fix for kubernetes/kubernetes#144077 from the Lean specification
+# (ApfQueueSet/Synth.lean) and write go/patches/0003-fix-from-spec.patch.
+gen-fix:
+	go/gen-fix.sh
+
+# Regenerate and compare with the committed patch, then run the PR's regression
+# test, the 304 scenarios and the trace replay on the Go code with the generated fix.
+check-fix: tracecheck
+	go/gen-fix.sh --check
+	cd go && APF_FIX=0003 ./run.sh pr-test | grep -A3 'patches: 0003' | grep -q '^--- PASS'
+	cd go && APF_FIX=0003 ./run.sh corrected
 	scripts/check_traces.sh

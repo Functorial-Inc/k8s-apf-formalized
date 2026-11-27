@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: go/run.sh affected|corrected|upstream-tests|pr-test [SEEDS]
 #   affected         apply 0002 only, run the harness, write traces/affected/*.jsonl
-#   corrected        apply 0001 + 0002, run the harness, write traces/corrected/*.jsonl
+#   corrected        apply the fix (0001, or 0003 with APF_FIX=0003) + 0002, run the harness, write traces/corrected/*.jsonl
 #   pr-test          the PR's own regression test, unmodified, on unpatched, 0002 and 0001+0002 trees
 #   upstream-tests   apply 0002 (and then 0001+0002), run upstream's own flowcontrol tests
 # SEEDS is the number of random seeds (default 300). Idempotent: the upstream tree is
@@ -15,7 +15,10 @@ UP="$HERE/upstream"
 MOD="$UP/staging/src/k8s.io/apiserver"
 PKG=./pkg/util/flowcontrol/fairqueuing/queueset
 PKGDIR="$MOD/pkg/util/flowcontrol/fairqueuing/queueset"
+# APF_FIX=0003 uses the fix generated from the Lean spec (go/gen-fix.sh) in place of PR #144078's (0001).
+FIX="${APF_FIX:-0001}"
 LOGS="$HERE/logs/$MODE"
+[ "$FIX" = 0001 ] || LOGS="$HERE/logs/$MODE-fix$FIX"
 
 "$HERE/fetch.sh" >/dev/null
 restore() { git -C "$UP" reset -q; git -C "$UP" checkout -q .; git -C "$UP" clean -fdq; }
@@ -27,7 +30,7 @@ apply() { for p in "$@"; do git -C "$UP" apply "$HERE/patches/$p" || { echo "pat
 rm -rf "$LOGS"; mkdir -p "$LOGS"
 
 if [ "$MODE" = upstream-tests ]; then
-  for variant in "0002" "0001 0002"; do
+  for variant in "0002" "$FIX 0002"; do
     restore
     for n in $variant; do apply "$(cd "$HERE/patches" && ls | grep "^$n-")"; done
     echo "== upstream tests with patches: $variant"
@@ -39,7 +42,7 @@ fi
 
 if [ "$MODE" = pr-test ]; then
   # The PR author's own regression test, unmodified, on three trees.
-  for variant in "none" "0002" "0001 0002"; do
+  for variant in "none" "0002" "$FIX 0002"; do
     restore
     [ "$variant" = none ] || for n in $variant; do apply "$(cd "$HERE/patches" && ls | grep "^$n-")"; done
     git -C "$UP" apply "$HERE/harness/pr144078-test.patch" || exit 1
@@ -52,7 +55,7 @@ fi
 
 case "$MODE" in
   affected)  apply 0002-instrumentation.patch ;;
-  corrected) apply 0001-fix-144078.patch 0002-instrumentation.patch ;;
+  corrected) apply "$(cd "$HERE/patches" && ls | grep "^$FIX-")" 0002-instrumentation.patch ;;
   *) echo "unknown mode $MODE"; exit 2 ;;
 esac
 

@@ -12,6 +12,9 @@ lean_lib ApfQueueSet where
 lean_exe tracecheck where
   root := `ApfQueueSet.TraceCheckMain
 
+lean_exe gofix where
+  root := `ApfQueueSet.GoFixMain
+
 /-! The script below is copied verbatim from Veil v4.35.0's `lakefile.lean`.
 `#model_check` (default and `compiled` modes) runs
 `lake script run veilModelCheckBuild` in the root workspace to compile the
