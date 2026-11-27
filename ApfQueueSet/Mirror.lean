@@ -941,7 +941,8 @@ end Issue
 
 The doc comment on `QueueSet.BeginConfigChange` says that reconfiguration
 "does not discard any queue unless and until it is undesired and empty".
-`discardedNaive` records a discard that breaks the naive reading (the removed queue had a waiting or executing request).
+`discardedNaive` records a discard that breaks the naive reading (the removed
+queue had a waiting or executing request).
 `discarded` records one that breaks the strict reading (waiting, executing or
 lingering). -/
 
